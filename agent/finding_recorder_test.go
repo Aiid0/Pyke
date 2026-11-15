@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/evidence"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/evidence"
 )
 
 type failingFindingRecorder struct{}

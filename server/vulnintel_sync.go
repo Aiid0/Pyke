@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/vulnintel"
+	"github.com/Aiid0/Pyke/vulnintel"
 )
 
 // 漏洞情报的可配置项（settings）。

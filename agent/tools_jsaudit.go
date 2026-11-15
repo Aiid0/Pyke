@@ -36,9 +36,9 @@ import (
 )
 
 const jsAuditScript = `#!/usr/bin/env python3
-"""pojun js_audit: SPA/webpack 前端源码泄露审计。
+"""pyke js_audit: SPA/webpack 前端源码泄露审计。
 
-用法: python3 pojun-jsaudit.py --out <outdir> <url1> [url2 ...]
+用法: python3 pyke-jsaudit.py --out <outdir> <url1> [url2 ...]
 url 可以是入口 HTML（提取 <script src>）或 .js 文件本体。
 每行输出一个 JSON 事件；最后一行 type=summary。仅标准库；
 http(s)_proxy 环境变量自动生效（流量走记录代理）；证书校验关闭（同 curl -k）。
@@ -312,7 +312,7 @@ func (t *ToolSet) ensureJsAuditScript() string {
 	if strings.TrimSpace(t.runDir) == "" {
 		return ""
 	}
-	p := filepath.Join(t.runDir, "pojun-jsaudit.py")
+	p := filepath.Join(t.runDir, "pyke-jsaudit.py")
 	if _, err := os.Stat(p); err == nil {
 		return p
 	}

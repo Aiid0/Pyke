@@ -16,9 +16,9 @@ import (
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/hosttools"
-	"github.com/chu0119/pojun/intercept"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/hosttools"
+	"github.com/Aiid0/Pyke/intercept"
 )
 
 // Worker is an LLM work agent (docs §4.4): it claims ONE intent, completes it
@@ -105,7 +105,7 @@ func WorkerSessionID(explorationID, intentID int64) string {
 	return fmt.Sprintf("exp%d-worker-i%d", explorationID, intentID)
 }
 
-const workerChatMarkerPrefix = "<!-- POJUN_WORKER_CHAT:"
+const workerChatMarkerPrefix = "<!-- PYKE_WORKER_CHAT:"
 
 func workerChatMarker(requestID string) string {
 	return workerChatMarkerPrefix + requestID + " -->"

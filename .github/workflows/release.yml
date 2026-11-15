@@ -51,27 +51,27 @@ jobs:
           path: server/webui/dist
       - name: Build and package with build.sh
         env:
-          POJUN_TARGET_OS: ${{ matrix.goos }}
-          POJUN_TARGET_ARCH: ${{ matrix.goarch }}
-          POJUN_BUILD_VERSION: ${{ github.ref_name }}
-          POJUN_SKIP_FRONTEND: "1"
-          POJUN_SKIP_NPM_CI: "1"
+          PYKE_TARGET_OS: ${{ matrix.goos }}
+          PYKE_TARGET_ARCH: ${{ matrix.goarch }}
+          PYKE_BUILD_VERSION: ${{ github.ref_name }}
+          PYKE_SKIP_FRONTEND: "1"
+          PYKE_SKIP_NPM_CI: "1"
           # UPX 自解压 ELF 在部分 Linux 内核、虚拟化和安全策略下会崩溃。
           # Release 使用 Go linker 裁剪和 zip 压缩，优先保证可移植性。
-          POJUN_COMPRESS: "0"
-          POJUN_PACKAGE: "1"
-          POJUN_PACKAGE_DIR: dist
+          PYKE_COMPRESS: "0"
+          PYKE_PACKAGE: "1"
+          PYKE_PACKAGE_DIR: dist
         run: |
-          ./build.sh --target "${POJUN_TARGET_OS}/${POJUN_TARGET_ARCH}"
+          ./build.sh --target "${PYKE_TARGET_OS}/${PYKE_TARGET_ARCH}"
       - name: Smoke test Linux amd64 binary
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: dist/pojun-linux-amd64/pojun -h
+        run: dist/pyke-linux-amd64/pyke -h
       # darwin 产物在 ubuntu runner 上无法执行，验证 Mach-O 格式与内嵌前端存在
       - name: Verify darwin binary format
         if: startsWith(matrix.goos, 'darwin')
         run: |
-          file "dist/pojun-${{ matrix.goos }}-${{ matrix.goarch }}/pojun"
-          file "dist/pojun-${{ matrix.goos }}-${{ matrix.goarch }}/pojun" | grep -q "Mach-O"
+          file "dist/pyke-${{ matrix.goos }}-${{ matrix.goarch }}/pyke"
+          file "dist/pyke-${{ matrix.goos }}-${{ matrix.goarch }}/pyke" | grep -q "Mach-O"
       - uses: actions/upload-artifact@v4
         with:
           name: pkg-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -82,8 +82,8 @@ jobs:
         with:
           name: bin-linux-${{ matrix.goarch }}
           path: |
-            dist/pojun-linux-${{ matrix.goarch }}/pojun
-            dist/pojun-linux-${{ matrix.goarch }}/pojun-hostd
+            dist/pyke-linux-${{ matrix.goarch }}/pyke
+            dist/pyke-linux-${{ matrix.goarch }}/pyke-hostd
 
   # ③ 汇总所有 zip → 创建 GitHub Release
   release:
@@ -97,6 +97,26 @@ jobs:
           pattern: pkg-*
           merge-multiple: true
           path: dist
+      # v0.5.0 更名（pojun→pyke）过渡：为旧实例的一键自更新生成 pojun-* 别名包
+      # （包内二进制同样保留 pojun 命名，旧版 selfupdate 按基名找 pojun）。
+      # 旧实例升级到本版后即运行 pyke 代码；别名资产保留一个版本周期后移除。
+      - name: Build legacy pojun-* alias packages
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          for z in pyke-*.zip; do
+            alias_zip="pojun-${z#pyke-}"
+            rm -rf .alias-tmp && mkdir .alias-tmp
+            unzip -q "$z" -d .alias-tmp
+            find .alias-tmp -type f \( -name pyke -o -name pyke.exe \) \
+              -exec bash -c 'mv "$1" "$(dirname "$1")/pojun${1##*/pyke}"' _ {} \;
+            find .alias-tmp -type f -name 'pyke-hostd*' \
+              -exec bash -c 'mv "$1" "$(dirname "$1")/pojun-${1##*/pyke-}"' _ {} \;
+            find .alias-tmp -type f -name 'pyke-maint*' \
+              -exec bash -c 'mv "$1" "$(dirname "$1")/pojun-${1##*/pyke-}"' _ {} \;
+            (cd .alias-tmp && zip -qr "../$alias_zip" .)
+            rm -rf .alias-tmp
+          done
       - name: Generate checksums
         working-directory: dist
         run: sha256sum *.zip > SHA256SUMS
@@ -114,10 +134,10 @@ jobs:
 
   # ④ 多架构镜像（复用 binaries 编好的 Linux 二进制，镜像里只装工具 + 放二进制；
   #    arm64 仅需模拟 apt 层，构建快很多）。
-  #    始终发布到 GHCR（ghcr.io/<owner>/pojun，owner 取自当前仓库并转小写）——
+  #    始终发布到 GHCR（ghcr.io/<owner>/pyke，owner 取自当前仓库并转小写）——
   #    用 Actions 内置 GITHUB_TOKEN，无需配置任何 secrets；若另外配置了
   #    DOCKERHUB_USERNAME / DOCKERHUB_TOKEN secrets，则同时推送到
-  #    <DockerHub用户名>/pojun，方便习惯 Docker Hub 的用户。
+  #    <DockerHub用户名>/pyke，方便习惯 Docker Hub 的用户。
   docker-cred-check:
     runs-on: ubuntu-latest
     outputs:
@@ -170,9 +190,9 @@ jobs:
         run: |
           # GHCR 仓库名必须全小写——repository_owner 可能含大写（如 Aiid0）。
           owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          imgs="ghcr.io/${owner}/pojun"
+          imgs="ghcr.io/${owner}/pyke"
           if [ "$DOCKERHUB_OK" = "true" ] && [ -n "$DOCKERHUB_USERNAME" ]; then
-            imgs="$imgs,${DOCKERHUB_USERNAME}/pojun"
+            imgs="$imgs,${DOCKERHUB_USERNAME}/pyke"
           fi
           echo "images=$imgs" >> "$GITHUB_OUTPUT"
       - uses: docker/metadata-action@v5

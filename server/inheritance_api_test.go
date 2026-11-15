@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 func TestInheritedActivityDetailAndRelationDeletion(t *testing.T) {

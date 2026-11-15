@@ -1,5 +1,5 @@
 // Package agent wires real LLM-driven planner and work agents (on top of the
-// agent-core SDK) to the dual SQLite graph. See docs/POJUN-架构设计.md
+// agent-core SDK) to the dual graph stores. See docs/01-双图架构.md
 // §4.3 (planner) and §4.4 (work agent).
 //
 // Provider configuration is read from the environment so the system runs with
@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/llmrec"
+	"github.com/Aiid0/Pyke/llmrec"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/compaction"
 	"github.com/Autumn-27/norma/llm"
@@ -159,13 +159,22 @@ func compactionConfig(windowTokens int) *compaction.Config {
 
 // FromEnv resolves the LLM provider config:
 //
-//	POJUN_LLM_PROVIDER = anthropic|openai (default: inferred from keys)
-//	POJUN_LLM_MODEL    = model id        (default: per provider)
-//	POJUN_LLM_BASE_URL = endpoint        (optional)
-//	POJUN_LLM_PROXY    = proxy URL        (optional; http/https/socks5)
+//	PYKE_LLM_PROVIDER = anthropic|openai (default: inferred from keys)
+//	PYKE_LLM_MODEL    = model id        (default: per provider)
+//	PYKE_LLM_BASE_URL = endpoint        (optional)
+//	PYKE_LLM_PROXY    = proxy URL        (optional; http/https/socks5)
 //	ANTHROPIC_API_KEY / OPENAI_API_KEY         = credentials
+// envCompat 读新名环境变量；为空则回落旧名。v0.5.0 产品更名（pojun→pyke）的
+// 过渡兼容：旧变量名保留一个版本周期，期间新名优先、旧名兜底。
+func envCompat(newKey, oldKey string) string {
+	if v := os.Getenv(newKey); v != "" {
+		return v
+	}
+	return os.Getenv(oldKey)
+}
+
 func FromEnv() (Config, bool) {
-	prov := os.Getenv("POJUN_LLM_PROVIDER")
+	prov := envCompat("PYKE_LLM_PROVIDER", "POJUN_LLM_PROVIDER")
 	anthKey := os.Getenv("ANTHROPIC_API_KEY")
 	oaiKey := os.Getenv("OPENAI_API_KEY")
 
@@ -181,11 +190,11 @@ func FromEnv() (Config, bool) {
 	}
 
 	c := Config{
-		BaseURL: os.Getenv("POJUN_LLM_BASE_URL"),
-		Model:   os.Getenv("POJUN_LLM_MODEL"),
-		Proxy:   strings.TrimSpace(os.Getenv("POJUN_LLM_PROXY")),
-		// 默认流式;POJUN_LLM_STREAM=false/0/off 显式关闭走非流式。
-		Stream: !isFalsy(os.Getenv("POJUN_LLM_STREAM")),
+		BaseURL: envCompat("PYKE_LLM_BASE_URL", "POJUN_LLM_BASE_URL"),
+		Model:   envCompat("PYKE_LLM_MODEL", "POJUN_LLM_MODEL"),
+		Proxy:   strings.TrimSpace(envCompat("PYKE_LLM_PROXY", "POJUN_LLM_PROXY")),
+		// 默认流式;PYKE_LLM_STREAM=false/0/off 显式关闭走非流式。
+		Stream: !isFalsy(envCompat("PYKE_LLM_STREAM", "POJUN_LLM_STREAM")),
 	}
 	switch prov {
 	case "openai":

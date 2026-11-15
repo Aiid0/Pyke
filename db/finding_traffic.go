@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/notify"
+	"github.com/Aiid0/Pyke/notify"
 )
 
 var (

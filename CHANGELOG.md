@@ -4,6 +4,50 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-15
+
+> 产品更名：**破军 Pojun → Pyke**。品牌、模块路径、二进制、服务、安装布局、
+> 环境变量、镜像、发布资产全部切换；数据层（表结构、PG 角色/库名）不变。
+
+### 破坏性变更（升级前必读）
+
+- **Go module path**：`github.com/chu0119/pojun` → `github.com/Aiid0/Pyke`（193 个 .go 文件 import 全量替换）。
+- **二进制与服务**：`pojun`/`pojun-hostd`/`pojun-maint` → `pyke`/`pyke-hostd`/`pyke-maint`；
+  安装目录 `/opt/pojun` → `/opt/pyke`；systemd 服务 `pojun.service` → `pyke.service`；
+  hostd socket `/run/pojun/hostd.sock` → `/run/pyke/hostd.sock`；macOS LaunchAgents `com.pojun` → `com.pyke`。
+- **发布资产**：`pojun-<版本>-<平台>-<架构>.zip` → `pyke-*.zip`；镜像 `ghcr.io/<owner>/pojun` → `ghcr.io/<owner>/pyke`。
+- **登录 cookie**：`pojun_token` → `pyke_token`（旧 cookie 过渡期兼容读取；升级后首次需重新登录）。
+- **默认用户名**：`POJUN` → `PYKE`（旧部署的 `POJUN`、更早的 `ARTEX` 用户名仍可登录）。
+
+### 兼容策略（一个版本周期后移除）
+
+- **环境变量双名兼容**：全部 `POJUN_*` 运行时变量（`POJUN_PG_DSN`、`POJUN_CONFIG`、
+  `POJUN_SKILL_DIR`、`POJUN_LLM_*`、`POJUN_INSTALL_PROXY`、`POJUN_HOSTD_SOCKET`、
+  `POJUN_BTW_MAX_OUTPUT_TOKENS`、`POJUN_NOTIFY_ALLOW_LOCAL`、
+  Docker 入口的 `POJUN_PREINSTALL_TOOLS`）改为读 `PYKE_*`、
+  空值时回落旧名；build.sh 构建变量在脚本头部做旧名映射。
+- **旧实例自更新**：Release 附带 `pojun-*` 别名资产包（包内二进制保留 pojun 命名，
+  旧版 selfupdate 按基名提取），v0.4.x 实例一键更新可平滑换装到 v0.5.0
+  （原地运行 Pyke 代码，目录/服务名不变）。别名包保留一个版本周期后停止生成。
+- **install.sh 旧布局迁移**：检测到 `/opt/pojun`（或 macOS `$HOME/pojun`）自动迁移到
+  新目录并切换服务名，数据与配置原样保留。
+- **数据层迁移（仅存量部署需要，新装无感）**：表结构不变；PG 角色/库名默认
+  `pojun` → `pyke`、Windows 卷名 `pojun-data` → `pyke-data`。存量部署二选一：
+  ① 在 `.env` 固定 `POSTGRES_USER=pojun` / `POSTGRES_DB=pojun`（compose/新镜像
+  继续沿用旧角色，零数据操作）；或 ② 执行改名：
+  `ALTER ROLE pojun RENAME TO pyke; ALTER DATABASE pojun RENAME TO pyke;`
+  并同步更新 `config.json` 的 `database.user/dbname`；Windows 卷执行
+  `docker volume rename <项目名>_pojun-data <项目名>_pyke-data`。
+
+### 变更
+
+- **前端品牌**：登录页/侧栏/错误页/更新卡片/示例文案/导出文件名切换 Pyke；
+  localStorage 偏好 key `pojun_*` → `pyke_*`（旧 UI 偏好自动重置）；token 存取双 key 过渡；
+  `web/package.json` name → `pyke-web`。
+- **文档**：README 重写品牌与链接（仓库已是 `Aiid0/Pyke`，原 `chu0119/Pojun` 链接已全部失效）、
+  截图重命名 22 件（`pojun-*.png` → `pyke-*.png`）、AGENTS.md / 部署手册 / AI-交接指南 /
+  config.example.json 同步。CHANGELOG 历史条目保留旧名不动。
+
 ## [0.4.71] - 2026-11-15
 
 ### 变更

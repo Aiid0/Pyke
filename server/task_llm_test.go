@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/agent"
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/agent"
+	"github.com/Aiid0/Pyke/db"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 )

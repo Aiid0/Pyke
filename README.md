@@ -1,16 +1,15 @@
 <div align="center">
 
-<img src="screenshots/pojun-logo.png" width="96" alt="Pojun"/>
+<img src="screenshots/pyke-logo.png" width="96" alt="Pyke"/>
 
-# 破军 Pojun
+# Pyke
 
 **AI 自主渗透测试平台 · 从一句话目标到可交付漏洞报告**
 
-> 破军，北斗第七星，主杀伐、主变局。<br/>
 > 找到防线的破口，并把破口证明给你看。
 
-[![Release](https://img.shields.io/github/v/release/chu0119/Pojun?label=%E7%89%88%E6%9C%AC&color=red)](https://github.com/chu0119/Pojun/releases)
-[![CI](https://github.com/chu0119/Pojun/actions/workflows/ci.yml/badge.svg)](https://github.com/chu0119/Pojun/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Aiid0/Pyke?label=%E7%89%88%E6%9C%AC&color=red)](https://github.com/Aiid0/Pyke/releases)
+[![CI](https://github.com/Aiid0/Pyke/actions/workflows/ci.yml/badge.svg)](https://github.com/Aiid0/Pyke/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 ![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Docker-lightgrey)
@@ -18,7 +17,7 @@
 
 **Go 单体后端** · **Next.js 内嵌前端** · **PostgreSQL** · **多 Agent 自主推进** · **全程证据留痕**
 
-📦 [一条命令安装](#快速开始) · 🧠 [单技能版 pojun-skill](https://github.com/chu0119/pojun-skill) —— 本平台方法论的单 skill 版，任意 AI Agent 即装即用
+📦 [一条命令安装](#快速开始) · 🧠 [单技能版 pojun-skill](https://github.com/chu0119/pojun-skill) —— 本平台方法论的单 skill 版（外部独立项目），任意 AI Agent 即装即用
 
 </div>
 
@@ -33,13 +32,13 @@
 **Linux（Debian / Ubuntu / RHEL / Kali 等，root 执行，全自动交互安装）：**
 
 ```bash
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/Aiid0/Pyke/releases/latest/download/install.sh | sudo bash
 ```
 
 **macOS 13+（Apple Silicon / Intel，一条命令，不需要 sudo）：**
 
 ```bash
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | bash
+curl -fsSL https://github.com/Aiid0/Pyke/releases/latest/download/install.sh | bash
 ```
 
 自动完成：Homebrew 检测（没有就装）→ PostgreSQL 16 安装与服务化 → 下载并
@@ -50,7 +49,7 @@ curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh 
 **Windows / 已有 Docker（工具链全在镜像里，宿主机零安装）：**
 
 ```bash
-git clone --depth 1 https://github.com/chu0119/Pojun.git pojun && cd pojun
+git clone --depth 1 https://github.com/Aiid0/Pyke.git pyke && cd pyke
 cp .env.example .env    # Windows 用 copy；至少改 POSTGRES_PASSWORD
 # Windows（Docker Desktop，WSL2 后端）：
 docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
@@ -81,10 +80,10 @@ docker compose up -d
 
 ## 这是什么
 
-Pojun 是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标，它自动完成
+Pyke 是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标，它自动完成
 「目标拆解 → 侦察 → 漏洞挖掘 → 利用 → 后渗透 → 报告」全流程，人随时可以插手纠偏。
 
-它不是一个「包一层 API 的扫描器」。Pojun 的核心设计是**让 AI 像一个守纪律的渗透测试工程师一样干活**：
+它不是一个「包一层 API 的扫描器」。Pyke 的核心设计是**让 AI 像一个守纪律的渗透测试工程师一样干活**：
 
 - **目标闸门**——每个目标必须带可核验的验收标准（如「未授权接口不带凭据返回 200 且
   含业务数据」「越权请求能读取到非本人对象的完整字段」），
@@ -109,57 +108,57 @@ Pojun 是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标�
 
 | 控制台登录：首次启动初始化管理员，防爆破锁定 | 总览：任务 / 发现 / 资产 / Token 全局态势与趋势 |
 | :---: | :---: |
-| ![登录](screenshots/pojun-login.png) | ![总览](screenshots/pojun-dashboard.png) |
+| ![登录](screenshots/pyke-login.png) | ![总览](screenshots/pyke-dashboard.png) |
 
 **任务执行**
 
 | 任务列表：目标进度与漏洞分布一屏可见 | 任务详情：多 Agent 会话，planner 态势研判实时可见 |
 | :---: | :---: |
-| ![任务列表](screenshots/pojun-tasks.png) | ![任务详情](screenshots/pojun-task-detail.png) |
+| ![任务列表](screenshots/pyke-tasks.png) | ![任务详情](screenshots/pyke-task-detail.png) |
 
 | 任务总览：目标逐条带验收标准，达成状态诚实呈现 |
 | :---: |
-| ![任务总览](screenshots/pojun-task-overview.png) |
+| ![任务总览](screenshots/pyke-task-overview.png) |
 
 | 目标管理与操作约束：目标逐条勾选达成，allow/deny 约束直接约束 planner 派单 |
 | :---: |
-| ![目标管理与操作约束](screenshots/pojun-task-goals.png) |
+| ![目标管理与操作约束](screenshots/pyke-task-goals.png) |
 
 **发现与证据**
 
 | 发现：跨任务漏洞汇总，按严重度统计 | 漏洞详情：摘要 + 复测命令 + 证据 PoC + 状态卡 |
 | :---: | :---: |
-| ![发现](screenshots/pojun-findings.png) | ![漏洞详情](screenshots/pojun-finding-detail.png) |
+| ![发现](screenshots/pyke-findings.png) | ![漏洞详情](screenshots/pyke-finding-detail.png) |
 
 | 资产台账：企业 → 根域名/IP/子域/服务/接口 全量登记 | 资产覆盖图：力导向布局，已测节点高亮 |
 | :---: | :---: |
-| ![资产](screenshots/pojun-assets.png) | ![资产覆盖图](screenshots/pojun-assets-graph.png) |
+| ![资产](screenshots/pyke-assets.png) | ![资产覆盖图](screenshots/pyke-assets-graph.png) |
 
 | 全局流量代理：所有 HTTP/S 往来逐请求留存 |
 | :---: |
-| ![流量](screenshots/pojun-traffic.png) |
+| ![流量](screenshots/pyke-traffic.png) |
 
 **平台配置**
 
 | 漏洞情报运营：42 万 CVE / KEV 在野利用 / PoC 仓库持续同步 | 技能库：22 个内置方法论技能，按需加载 |
 | :---: | :---: |
-| ![漏洞情报](screenshots/pojun-vulnintel.png) | ![技能库](screenshots/pojun-skills.png) |
+| ![漏洞情报](screenshots/pyke-vulnintel.png) | ![技能库](screenshots/pyke-skills.png) |
 
 | MCP 预设：FOFA 测绘 / Playwright / Burp 等一键接入 | Agent 角色：按角色配模型与可见性 |
 | :---: | :---: |
-| ![MCP](screenshots/pojun-mcp.png) | ![Agent](screenshots/pojun-agents.png) |
+| ![MCP](screenshots/pyke-mcp.png) | ![Agent](screenshots/pyke-agents.png) |
 
 | LLM 配置：多通道轮询 / 熔断 / 故障转移 | 宿主环境：66 件工具体检 + 一键装齐 |
 | :---: | :---: |
-| ![LLM](screenshots/pojun-llm.png) | ![宿主环境](screenshots/pojun-hostenv.png) |
+| ![LLM](screenshots/pyke-llm.png) | ![宿主环境](screenshots/pyke-hostenv.png) |
 
 | 监听器 / C2：反弹 shell 回连接收与出口管理 | 对话工作台：跨 Agent 对话与工具触发回放 |
 | :---: | :---: |
-| ![C2](screenshots/pojun-c2.png) | ![对话](screenshots/pojun-chat.png) |
+| ![C2](screenshots/pyke-c2.png) | ![对话](screenshots/pyke-chat.png) |
 
 | 系统设置：目标收尾 / 写回守卫 / 跨任务去重等开关 | 领域工具：agent 可调用的平台工具清单与开关 |
 | :---: | :---: |
-| ![设置](screenshots/pojun-settings.png) | ![工具](screenshots/pojun-tools.png) |
+| ![设置](screenshots/pyke-settings.png) | ![工具](screenshots/pyke-tools.png) |
 
 ---
 
@@ -238,7 +237,7 @@ sequenceDiagram
 
 ### 7. 漏洞情报运营（持续，不是静态知识库）
 
-多数同类产品的情报是「按组件查」；Pojun 做的是「**按时间流**」——
+多数同类产品的情报是「按组件查」；Pyke 做的是「**按时间流**」——
 **最近 7 天爆了什么 → 匹配我的资产 → 排进任务**：
 
 - NVD 全量/增量（实测库 42 万+）+ **CISA KEV 在野利用** + GitHub Advisory
@@ -260,7 +259,7 @@ sequenceDiagram
   获取→横向移动→数据获取回传→收尾）+ 证据纪律。
 - **后渗透工具**：impacket / netexec / evil-winrm / chisel / ligolo-ng /
   proxychains / socat / linpeas / pspy / responder / sqlmap / hydra / hashcat /
-  nuclei / ffuf … 66 件在「宿主环境」页一键装齐（特权助手 pojun-hostd 串行排队）。
+  nuclei / ffuf … 66 件在「宿主环境」页一键装齐（特权助手 pyke-hostd 串行排队）。
 
 ### 9. 审批与拦截：三层闸门
 
@@ -372,7 +371,7 @@ flowchart TB
 在**全新 Linux 服务器**（Debian/Ubuntu/CentOS/RHEL/Kali 等）上以 root 执行：
 
 ```bash
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/Aiid0/Pyke/releases/latest/download/install.sh | sudo bash
 ```
 
 脚本会交互式问你（直接回车用默认值）：
@@ -387,7 +386,7 @@ curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh 
 
 ```bash
 # 全默认（二进制、直连）
-curl -fsSL https://github.com/chu0119/Pojun/releases/latest/download/install.sh | sudo bash -s -- -y
+curl -fsSL https://github.com/Aiid0/Pyke/releases/latest/download/install.sh | sudo bash -s -- -y
 # 带代理 + 顺装常用渗透工具
 curl -fsSL .../install.sh | sudo bash -s -- --install-proxy=http://10.0.0.14:7897 --with-tools
 # Docker 形态
@@ -395,22 +394,22 @@ curl -fsSL .../install.sh | sudo bash -s -- --mode=docker
 ```
 
 幂等：重复执行 = 原地升级；`config.json` / `jwt.key` / 数据 / 数据库不动。
-卸载：`systemctl disable --now pojun pojun-hostd && rm -rf /opt/pojun`。
+卸载：`systemctl disable --now pyke pyke-hostd && rm -rf /opt/pyke`。
 
 ### 方式二：Docker Compose 直跑（ghcr 已发布镜像）
 
 已经会用 Docker 的话，不需要 install.sh：
 
 ```bash
-git clone --depth 1 https://github.com/chu0119/Pojun.git pojun && cd pojun
-cp .env.example .env      # 至少改 POSTGRES_PASSWORD；POJUN_TAG 可钉到具体版本（如 v0.4.64）
+git clone --depth 1 https://github.com/Aiid0/Pyke.git pyke && cd pyke
+cp .env.example .env      # 至少改 POSTGRES_PASSWORD；PYKE_TAG 可钉到具体版本（如 v0.4.64）
 docker compose up -d      # → http://localhost:8787
 ```
 
 **Windows（Docker Desktop，WSL2 后端）**：
 
 ```powershell
-git clone --depth 1 https://github.com/chu0119/Pojun.git pojun; cd pojun
+git clone --depth 1 https://github.com/Aiid0/Pyke.git pyke; cd pyke
 copy .env.example .env    # 至少改 POSTGRES_PASSWORD
 docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 # → http://localhost:8787
@@ -422,11 +421,11 @@ docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 - **回连接收器**：容器内 direct 模式解析出的 LHOST 是容器网段 IP，外部目标连不到——
   在「监听器 / C2」页把出口形态设为 **manual**、地址填 Windows 宿主机的局域网 IP
   （`ipconfig` 查看），监听端口与映射端口 1:1 对应；Windows 防火墙放行对应端口；
-- 数据备份：`docker run --rm -v <项目名>_pojun-data:/data -v "%cd%:/backup" alpine tar czf /backup/pojun-data.tgz -C /data .`；
+- 数据备份：`docker run --rm -v <项目名>_pyke-data:/data -v "%cd%:/backup" alpine tar czf /backup/pyke-data.tgz -C /data .`；
 - 其余与 Linux 相同：镜像内置全部渗透工具 / LibreOffice / Playwright，无需在
   Windows 宿主机安装任何工具链。建议 Docker Desktop 分配 ≥8G 内存。
 
-- 镜像 `ghcr.io/chu0119/pojun`，amd64/arm64 双架构，`POJUN_TAG` 默认 `latest`；
+- 镜像 `ghcr.io/aiid0/pyke`，amd64/arm64 双架构，`PYKE_TAG` 默认 `latest`；
   渗透工具随镜像内置（与二进制 `--with-tools` 同一套）：nmap / masscan /
   sqlmap / hydra / whatweb / nikto / ffuf / john / impacket / socat /
   proxychains / nuclei / httpx / subfinder / naabu / dnsx / katana / tlsx /
@@ -439,8 +438,8 @@ docker compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 
 ### 方式三：下载预编译包（Linux / macOS，amd64 与 arm64）
 
-到 [Releases](https://github.com/chu0119/Pojun/releases) 下载对应平台包
-`pojun-<版本>-<平台>-<架构>.zip`（附 SHA256SUMS），解压后：
+到 [Releases](https://github.com/Aiid0/Pyke/releases) 下载对应平台包
+`pyke-<版本>-<平台>-<架构>.zip`（附 SHA256SUMS），解压后：
 
 ```bash
 cp config.example.json config.json   # 填好 database 连接
@@ -460,7 +459,7 @@ Homebrew + launchd，与 Linux 同款体验；下面的手动方式适合不想�
   Node ≥ 20（Playwright MCP）与 `uv`（FOFA MCP）按需安装；
 - 渗透工具链（nmap/sqlmap/nuclei 等）用 `brew install` 按需装，没有的工具
   「宿主环境」页会如实显示缺失——agent 会绕开缺失工具改用可用的；
-- 特权助手 `pojun-hostd` 与批量装工具是 Linux 体系，macOS 上不可用（影响：
+- 特权助手 `pyke-hostd` 与批量装工具是 Linux 体系，macOS 上不可用（影响：
   「一键装齐」按钮不可用，其余功能完整）；
 - `masscan`/`nmap -sS` 等特权扫描需要 root/sudo，与 Linux 同理。
 
@@ -469,11 +468,11 @@ Homebrew + launchd，与 Linux 同款体验；下面的手动方式适合不想�
 ```bash
 cd web && npm ci && npm run build:static && cd ..
 cp -r web/out server/webui/dist
-CGO_ENABLED=0 go build -tags embedui -o pojun ./cmd/pojun
-CGO_ENABLED=0 go build -o pojun-hostd ./cmd/pojun-hostd   # 可选：特权安装助手（Linux）
+CGO_ENABLED=0 go build -tags embedui -o pyke ./cmd/pyke
+CGO_ENABLED=0 go build -o pyke-hostd ./cmd/pyke-hostd   # 可选：特权安装助手（Linux）
 ./start.sh
 # 交叉编译其他平台示例（macOS Apple Silicon）：
-# CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags embedui -o pojun-darwin-arm64 ./cmd/pojun
+# CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -tags embedui -o pyke-darwin-arm64 ./cmd/pyke
 ```
 
 ### 公网部署
@@ -491,11 +490,11 @@ CGO_ENABLED=0 go build -o pojun-hostd ./cmd/pojun-hostd   # 可选：特权安�
 
 ## 配置速查
 
-**数据库**（`config.json` 或 `POJUN_PG_DSN`）：
+**数据库**（`config.json` 或 `PYKE_PG_DSN`）：
 
 ```json
-{ "database": { "host": "127.0.0.1", "port": 5432, "user": "pojun",
-                "password": "…", "dbname": "pojun", "sslmode": "disable" } }
+{ "database": { "host": "127.0.0.1", "port": 5432, "user": "pyke",
+                "password": "…", "dbname": "pyke", "sslmode": "disable" } }
 ```
 
 **LLM**：环境变量 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` 可兜底，UI「LLM 配置」页
@@ -549,7 +548,7 @@ chisel/ligolo-ng/socat/proxychains/linpeas/pspy/responder…）、
 
 ## 与同类项目的差异
 
-| 维度 | 常见同类 | Pojun |
+| 维度 | 常见同类 | Pyke |
 |---|---|---|
 | 完成判定 | LLM 自评「任务完成」即可收官 | 目标 + 验收标准 + `goal_met` 闸门，未全达成强制记未完成 |
 | 漏洞可信度 | 扫描器输出直接入库 | 机械验证凭据闸门 + L1-L4 证据分级 + 对抗式自检，critical/high 必须 L3+ |
@@ -581,14 +580,14 @@ go test ./...   # 连 PG 跑全量（CI 用 -p 1 串行防跨包死锁）
 cd web && npx tsc --noEmit && NEXT_EXPORT=1 npx next build
 ```
 
-- 后端：`go run ./cmd/pojun`（`-tags embedui` 内嵌前端）
+- 后端：`go run ./cmd/pyke`（`-tags embedui` 内嵌前端）
 - 前端：`cd web && npm run dev`（`/api` 反代热更新）
 - Mock 预览：`cd web && NEXT_PUBLIC_MOCK=1 npm run dev`
 
 项目结构：
 
 ```
-cmd/            程序入口（pojun 主服务 / pojun-hostd 特权助手）
+cmd/            程序入口（pyke 主服务 / pyke-hostd 特权助手）
 agent/          多 Agent 层：planner / worker / mainagent / 领域工具（tools_*.go）
 db/             PostgreSQL 唯一存储：schema.sql（幂等迁移）+ 全部表 Store
 server/         HTTP 服务：路由 / 引擎调度 / Manager / 会话 / 报告 / 更新
@@ -673,6 +672,6 @@ docs/           设计文档 / 部署手册 / 能力对照
 
 <div align="center">
 
-**破军 · Pojun** — 找到防线的破口，并把破口证明给你看。
+**Pyke** — 找到防线的破口，并把破口证明给你看。
 
 </div>

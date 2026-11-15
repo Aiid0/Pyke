@@ -6,9 +6,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/intercept"
-	"github.com/chu0119/pojun/sidequestion"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/intercept"
+	"github.com/Aiid0/Pyke/sidequestion"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"

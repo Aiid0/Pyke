@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/report"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/report"
 )
 
 // exportExcludeStatuses 交付件默认剔除的分拣状态。
@@ -145,7 +145,7 @@ func (s *Server) exportTaskDocx(w http.ResponseWriter, r *http.Request) {
 		PageHeader:     fmt.Sprintf("渗透测试报告 — %s", t.Description),
 		ArtifactImage:  s.artifactImageResolver(t.ID, 0),
 	})
-	name := fmt.Sprintf("pojun-report-task%s-%s.docx", t.ID, time.Now().Format("20060102"))
+	name := fmt.Sprintf("pyke-report-task%s-%s.docx", t.ID, time.Now().Format("20060102"))
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.WriteHeader(200)
@@ -200,7 +200,7 @@ func (s *Server) artifactImageResolver(taskID string, onlyFindingID int64) func(
 
 // shrinkDocxImage 把大图缩到长边 1600 的 JPEG；失败返回 false 由调用方用原图。
 func (s *Server) shrinkDocxImage(data []byte) ([]byte, bool) {
-	f, err := os.CreateTemp("", "pojun-embed-*.img")
+	f, err := os.CreateTemp("", "pyke-embed-*.img")
 	if err != nil {
 		return nil, false
 	}
@@ -295,7 +295,7 @@ func (s *Server) exportFindingDocx(w http.ResponseWriter, r *http.Request) {
 			return s.artifactImageResolver(strconv.FormatInt(*f.TaskID, 10), f.ID)
 		}(),
 	})
-	name := fmt.Sprintf("pojun-finding-%d-%s.docx", f.ID, time.Now().Format("20060102"))
+	name := fmt.Sprintf("pyke-finding-%d-%s.docx", f.ID, time.Now().Format("20060102"))
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.WriteHeader(200)

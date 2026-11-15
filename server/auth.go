@@ -233,10 +233,10 @@ func loginGuard(w http.ResponseWriter, r *http.Request, action string) bool {
 	return true
 }
 
-// signJWT issues a 7-day HS256 token for user POJUN.
+// signJWT issues a 7-day HS256 token for user PYKE.
 func signJWT(key []byte) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Subject:   "POJUN",
+		Subject:   "PYKE",
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtTTL)),
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
 	}).SignedString(key)
@@ -276,15 +276,19 @@ func queryTokenAllowed(r *http.Request) bool {
 }
 
 // extractToken reads the JWT from Authorization: Bearer header, or the
-// pojun_token cookie. ?token= query is only honored on the SSE stream endpoints
+// pyke_token cookie（旧名 pojun_token 过渡期兼容读取，已登录旧标签页不断会话）.
+// ?token= query is only honored on the SSE stream endpoints
 // (queryTokenAllowed) — elsewhere the token would leak into access logs and
 // Referer headers without giving up anything the cookie doesn't already do.
 func extractToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
 		return strings.TrimPrefix(h, "Bearer ")
 	}
-	if c, err := r.Cookie("pojun_token"); err == nil && c.Value != "" {
+	if c, err := r.Cookie("pyke_token"); err == nil && c.Value != "" {
 		return c.Value
+	}
+	if c, err := r.Cookie("pojun_token"); err == nil && c.Value != "" {
+		return c.Value // v0.5.0 更名过渡：旧 cookie 一个版本周期后移除
 	}
 	if queryTokenAllowed(r) {
 		return r.URL.Query().Get("token")
@@ -461,7 +465,7 @@ func (s *Server) authLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "请求格式错误")
 		return
 	}
-	if req.Username != "POJUN" && req.Username != "ARTEX" { // v0.4.19 改名：兼容旧用户名
+	if req.Username != "PYKE" && req.Username != "POJUN" && req.Username != "ARTEX" { // v0.4.19/v0.5.0 改名：兼容旧用户名
 		writeErr(w, 401, "用户名或密码错误")
 		return
 	}

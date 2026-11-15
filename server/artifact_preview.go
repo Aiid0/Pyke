@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/docpreview"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/docpreview"
 )
 
 // 文档预览（v0.4.21）：Word/Excel/PPT/PDF 取样渲染成图片，供任务证据卡与

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chu0119/pojun/intercept"
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/intercept"
+	"github.com/Aiid0/Pyke/db"
 )
 
 // 规则命中 action=judge 时，guard 必须把这次调用交给模型裁决，并把裁决结果

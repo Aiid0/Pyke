@@ -74,15 +74,24 @@ func isGoRunDir(dir string) bool {
 }
 
 // Path returns the config file path. Resolution order:
-//  1. env POJUN_CONFIG (explicit override)
+//  1. env PYKE_CONFIG (explicit override)
 //  2. ./config.json in the current working directory (running from the project
 //     dir — robust no matter where `go run` placed the temp/cached binary)
 //  3. config.json next to the executable (a distributed binary keeps it beside)
 //
 // The first existing file wins. If none exist, the CWD path is returned so the
 // "not found" message points at the project dir the user most likely expected.
+// envCompat 读新名环境变量；为空则回落旧名。v0.5.0 产品更名（pojun→pyke）的
+// 过渡兼容：旧变量名保留一个版本周期，期间新名优先、旧名兜底。
+func envCompat(newKey, oldKey string) string {
+	if v := os.Getenv(newKey); v != "" {
+		return v
+	}
+	return os.Getenv(oldKey)
+}
+
 func Path() string {
-	if v := strings.TrimSpace(os.Getenv("POJUN_CONFIG")); v != "" {
+	if v := strings.TrimSpace(envCompat("PYKE_CONFIG", "POJUN_CONFIG")); v != "" {
 		return v
 	}
 	var candidates []string
@@ -121,12 +130,12 @@ func Load() Config {
 
 // SkillDir returns the skill root directory with precedence:
 //
-//	env POJUN_SKILL_DIR  >  config file (skill_dir)  >  BaseDir()/skills
+//	env PYKE_SKILL_DIR  >  config file (skill_dir)  >  BaseDir()/skills
 //
 // The directory is created if it does not exist.
 func SkillDir() string {
 	var d string
-	if v := strings.TrimSpace(os.Getenv("POJUN_SKILL_DIR")); v != "" {
+	if v := strings.TrimSpace(envCompat("PYKE_SKILL_DIR", "POJUN_SKILL_DIR")); v != "" {
 		d = v
 	} else if v := strings.TrimSpace(Load().SkillDir); v != "" {
 		d = v
@@ -139,15 +148,15 @@ func SkillDir() string {
 
 // PostgresDSN resolves the connection string with precedence:
 //
-//	env POJUN_PG_DSN  >  config file (database.dsn, or assembled from fields)
+//	env PYKE_PG_DSN  >  config file (database.dsn, or assembled from fields)
 //
 // There is NO built-in fallback: when neither source supplies a database config,
 // it returns an error naming the config path it inspected, so startup fails loudly
 // instead of silently connecting to a wrong default. source describes where the
 // DSN came from (for startup logging).
 func PostgresDSN() (dsn, source string, err error) {
-	if v := strings.TrimSpace(os.Getenv("POJUN_PG_DSN")); v != "" {
-		return v, "环境变量 POJUN_PG_DSN", nil
+	if v := strings.TrimSpace(envCompat("PYKE_PG_DSN", "POJUN_PG_DSN")); v != "" {
+		return v, "环境变量 PYKE_PG_DSN", nil
 	}
 	db := Load().Database
 	if d := strings.TrimSpace(db.DSN); d != "" {
@@ -156,7 +165,7 @@ func PostgresDSN() (dsn, source string, err error) {
 	if db.Host != "" || db.DBName != "" || db.User != "" {
 		return db.buildDSN(), "配置文件 " + Path() + " (database 字段)", nil
 	}
-	return "", "", fmt.Errorf("未找到数据库配置：环境变量 POJUN_PG_DSN 未设置，且配置文件 %s 未提供 database（dsn 或 host/user/dbname）。请创建该配置文件或设置环境变量后重试", Path())
+	return "", "", fmt.Errorf("未找到数据库配置：环境变量 PYKE_PG_DSN（或旧名 POJUN_PG_DSN）未设置，且配置文件 %s 未提供 database（dsn 或 host/user/dbname）。请创建该配置文件或设置环境变量后重试", Path())
 }
 
 func (d Database) buildDSN() string {

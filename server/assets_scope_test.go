@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 func TestCompanyScopeInputsAcceptStructuredAndLegacyRules(t *testing.T) {

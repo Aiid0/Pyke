@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	pgdb "github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/traffic"
-	"github.com/chu0119/pojun/vulnintel"
+	pgdb "github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/traffic"
+	"github.com/Aiid0/Pyke/vulnintel"
 )
 
 // 情报配置（对外脱敏：key/token 只回 set 布尔与尾号）。

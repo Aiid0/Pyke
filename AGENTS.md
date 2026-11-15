@@ -6,7 +6,8 @@
 
 ## 0. 项目一句话
 
-破军 Pojun = AI 自主渗透测试平台（Go 单体后端 + Next.js 静态导出前端 + PostgreSQL 唯一存储）。
+Pyke = AI 自主渗透测试平台（Go 单体后端 + Next.js 静态导出前端 + PostgreSQL 唯一存储）。
+> 历史：2026-11-02 前名 ARTEX，2026-11-02 定名破军 Pojun（v0.4.19），2026-11-15 更名 Pyke（v0.5.0，模块路径 github.com/Aiid0/Pyke）。
 planner/worker 双角色多 Agent 自主推进，双图架构（资产图×探索图），三层拦截规则，全程证据留痕。
 接手自已删除的原作者仓库（基线 v0.3.15），现为独立演进项目。**仅供授权测试**（README 免责条款）。
 
@@ -23,14 +24,14 @@ cd web && NEXT_EXPORT=1 npx next build
 
 # 全量测试：连真 PG（Docker），-p 1 不能去（跨包死锁），先给新鲜库（共享库跑多轮会撞
 # 固定名 fixture 的唯一键，产生假失败）
-docker run -d --name pojun-audit-pg -e POSTGRES_PASSWORD=pojuntest -e POSTGRES_USER=pojun \
-  -e POSTGRES_DB=pojun -p 15432:5432 postgres:16-alpine
-docker exec pojun-audit-pg psql -U pojun -d postgres -c "DROP DATABASE IF EXISTS pojun_ci; CREATE DATABASE pojun_ci OWNER pojun"
-POJUN_PG_DSN="postgres://pojun:pojuntest@127.0.0.1:15432/pojun_ci?sslmode=disable" go test -p 1 ./... -count=1
+docker run -d --name pyke-audit-pg -e POSTGRES_PASSWORD=pyketest -e POSTGRES_USER=pyke \
+  -e POSTGRES_DB=pyke -p 15432:5432 postgres:16-alpine
+docker exec pyke-audit-pg psql -U pyke -d postgres -c "DROP DATABASE IF EXISTS pyke_ci; CREATE DATABASE pyke_ci OWNER pyke"
+PYKE_PG_DSN="postgres://pyke:pyketest@127.0.0.1:15432/pyke_ci?sslmode=disable" go test -p 1 ./... -count=1
 
 # 发版构建（本机交叉编译验证用；正式发版靠 CI）
-POJUN_SKIP_FRONTEND=1 POJUN_SKIP_NPM_CI=1 POJUN_COMPRESS=0 POJUN_PACKAGE=0 \
-  POJUN_OUTPUT=/abs/path/pojun ./build.sh --target linux/amd64
+PYKE_SKIP_FRONTEND=1 PYKE_SKIP_NPM_CI=1 PYKE_COMPRESS=0 PYKE_PACKAGE=0 \
+  PYKE_OUTPUT=/abs/path/pyke ./build.sh --target linux/amd64
 ```
 
 ## 2. 测试基线（判定 FAIL 是否与你有关）
@@ -52,10 +53,10 @@ POJUN_SKIP_FRONTEND=1 POJUN_SKIP_NPM_CI=1 POJUN_COMPRESS=0 POJUN_PACKAGE=0 \
 
 ## 4. 关键坑（真实踩过的）
 
-- **默认构建不含前端**：`go build ./cmd/pojun` 出的是 stub（页面报「前端未内嵌」）。内嵌必须
+- **默认构建不含前端**：`go build ./cmd/pyke` 出的是 stub（页面报「前端未内嵌」）。内嵌必须
   `-tags embedui` 且先 `cp -r web/out server/webui/dist`。别把无 tags 的现场编译版当正式版部署。
 - **dev 版本号禁用一键更新**：`CompareVersions` 只认纯净三段式；`0.3.95-dev` 这类会被判不可比较。
-  本机交叉编译验证时传 `POJUN_BUILD_VERSION` 要注意。
+  本机交叉编译验证时传 `PYKE_BUILD_VERSION` 要注意。
 - **next build 的 cwd 必须是 `web/`**——曾在 `web/src` 下误跑，产物 `.next` 被 `git add -A` 带进仓库。
 - **短 sleep 等定时器的测试不许写**：`1ms 超时 + sleep 2ms 断言` 在 CI 高负载翻车（本地必过）。
   用有界轮询。
@@ -71,7 +72,7 @@ POJUN_SKIP_FRONTEND=1 POJUN_SKIP_NPM_CI=1 POJUN_COMPRESS=0 POJUN_PACKAGE=0 \
 ## 5. 目录速览
 
 ```
-cmd/            入口（pojun / pojun-hostd 特权助手 / pojun-maint 维护工具）
+cmd/            入口（pyke / pyke-hostd 特权助手 / pyke-maint 维护工具）
 agent/          多 Agent 层（planner/worker/mainagent 提示词与工具；三张工具清单在 tools.go/tools_insert.go）
 db/             PostgreSQL 唯一存储（schema.sql 幂等迁移；拦截规则 seed 批次 v1-v5）
 server/         HTTP 面与引擎调度（全部路由注册在 server.go:680-1000 一带）

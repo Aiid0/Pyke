@@ -60,7 +60,7 @@ func Generate(ctx context.Context, src, outDir string, maxPages int) (int, error
 	if !Supports(src) {
 		return 0, fmt.Errorf("不支持的文件类型：%s", filepath.Ext(src))
 	}
-	tmp, err := os.MkdirTemp("", "pojun-preview-")
+	tmp, err := os.MkdirTemp("", "pyke-preview-")
 	if err != nil {
 		return 0, fmt.Errorf("创建临时目录：%w", err)
 	}
@@ -107,7 +107,7 @@ func officeToPDF(ctx context.Context, src, tmp string) (string, error) {
 	cmd := exec.CommandContext(runCtx, bin, args...)
 	cmd.Env = append(os.Environ(), "HOME="+tmp)
 	// cwd 必须是可访问目录：soffice 包装脚本会 cd 回启动时目录（比如以 root
-	// 从 /root 启动、再 sudo -u pojun 运行时，pojun 无权进入 /root 直接失败）。
+	// 从 /root 启动、再 sudo -u pyke 运行时，pyke 无权进入 /root 直接失败）。
 	cmd.Dir = tmp
 	out, runErr := cmd.CombinedOutput()
 	if runErr != nil {

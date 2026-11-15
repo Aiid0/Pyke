@@ -69,7 +69,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const { token } = await api.login("POJUN", password);
+      const { token } = await api.login("PYKE", password);
       auth.setToken(token);
       window.location.replace("/function/tasks");
     } catch (e) {
@@ -165,7 +165,7 @@ export default function LoginPage() {
               <Label htmlFor="username" className="text-muted-foreground text-xs">用户名</Label>
               <Input
                 id="username"
-                value="POJUN"
+                value="PYKE"
                 readOnly
                 className="border-border/60 bg-muted/50 font-mono text-muted-foreground"
               />

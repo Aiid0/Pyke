@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/agent"
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/traffic"
+	"github.com/Aiid0/Pyke/agent"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/traffic"
 )
 
 func trafficEvidenceServer(t *testing.T) (*Server, *db.RecordedFinding, func(string, string, string) *httptest.ResponseRecorder) {

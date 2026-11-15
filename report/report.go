@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 // Input bundles what the report needs.

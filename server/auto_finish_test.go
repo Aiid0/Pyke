@@ -3,7 +3,7 @@ package server
 import (
 	"testing"
 
-	"github.com/chu0119/pojun/agent"
+	"github.com/Aiid0/Pyke/agent"
 )
 
 func TestEvaluateAutoFinish(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 // maxChatUpload caps a single chat-attachment upload request (memory + spill).

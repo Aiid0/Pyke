@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/intercept"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/intercept"
 )
 
 func TestInterceptDetailHTTP(t *testing.T) {

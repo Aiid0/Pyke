@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/mcphttp"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/mcphttp"
 	"github.com/Autumn-27/norma/mcp"
 	actool "github.com/Autumn-27/norma/tool"
 )

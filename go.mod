@@ -1,4 +1,4 @@
-module github.com/chu0119/pojun
+module github.com/Aiid0/Pyke
 
 go 1.26.3
 

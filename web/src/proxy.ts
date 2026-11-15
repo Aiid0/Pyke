@@ -8,7 +8,8 @@ export function proxy(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_MOCK === "1") return NextResponse.next();
 
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get("pojun_token")?.value;
+    // 更名过渡：pyke_token 优先，旧 pojun_token 兜底（一个版本周期后移除）。
+  const token = request.cookies.get("pyke_token")?.value ?? request.cookies.get("pojun_token")?.value;
   const isAuthPage = AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   // 未登录 → 跳转登录页

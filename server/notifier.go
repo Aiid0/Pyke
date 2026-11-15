@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/notify"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/notify"
 )
 
 // 全局设置键（存在 settings 键值表里，无需建表）。
@@ -18,7 +18,7 @@ const (
 	// 而不是功能的启用条件——真正的启用条件是「有没有配渠道」。
 	settingNotifyEnabled = "notify_enabled"
 	// settingNotifyPublicBaseURL 是生成漏洞详情回链的外部访问地址
-	// （如 https://pojun.example.com）。留空则消息里不带回链按钮。
+	// （如 https://pyke.example.com）。留空则消息里不带回链按钮。
 	// 项目里没有可复用的外部地址配置，所以这里新增一项。
 	settingNotifyPublicBaseURL = "notify_public_base_url"
 	// settingNotifyDigestMinutes 是汇总模式的周期（分钟）。

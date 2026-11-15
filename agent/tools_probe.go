@@ -15,7 +15,7 @@ package agent
 // **只落脚本 + 组命令，不自己发请求**——流量录制、审批管控、审计全部经由 Bash
 // 自动生效，平台自己发请求会绕过整条管控链。
 //
-// 脚本幂等落盘（runDir/pojun-probe.sh），后续调用只传 URL 列表，命令保持最短。
+// 脚本幂等落盘（runDir/pyke-probe.sh），后续调用只传 URL 列表，命令保持最短。
 // 不带 --noproxy：运行环境若有录制代理（http(s)_proxy 环境变量），curl 自动走
 // 代理，流量照常进流量查看器；没有则直连，与手写 curl -k 行为一致。
 
@@ -31,7 +31,7 @@ import (
 )
 
 const httpProbeScript = `#!/usr/bin/env bash
-# pojun http_probe: 对每个 URL 输出一行紧凑 JSON（url/status/bytes/time_ms/title/server/content_type/redirect）
+# pyke http_probe: 对每个 URL 输出一行紧凑 JSON（url/status/bytes/time_ms/title/server/content_type/redirect）
 for u in "$@"; do
   f=$(mktemp); h=$(mktemp)
   out=$(curl -sS -k -L --max-time 10 -w '%{http_code} %{time_total}' -o "$f" -D "$h" "$u" 2>/dev/null)
@@ -75,7 +75,7 @@ func (t *ToolSet) ensureProbeScript() string {
 	if strings.TrimSpace(t.runDir) == "" {
 		return ""
 	}
-	p := filepath.Join(t.runDir, "pojun-probe.sh")
+	p := filepath.Join(t.runDir, "pyke-probe.sh")
 	if _, err := os.Stat(p); err == nil {
 		return p
 	}

@@ -126,7 +126,7 @@ const mcpPresets: MCPPreset[] = [
     description: "读写指定目录下的文件（默认限定任务数据目录）。",
     transport: "stdio",
     command: "npx",
-    args: "@modelcontextprotocol/server-filesystem /opt/pojun/data",
+    args: "@modelcontextprotocol/server-filesystem /opt/pyke/data",
     requires: "需 node ≥ 18；路径按需修改",
   },
   {

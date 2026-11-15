@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/intercept"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/intercept"
 )
 
 // MCP deferred 调用的解包回归：模型调 MCP 工具时，外层 tool_use 名字固定是

@@ -17,13 +17,13 @@ import (
 	"time"
 
 	actool "github.com/Autumn-27/norma/tool"
-	"github.com/chu0119/pojun/agent"
-	pgdb "github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/enrich"
-	"github.com/chu0119/pojun/guard"
-	"github.com/chu0119/pojun/intercept"
-	"github.com/chu0119/pojun/traffic"
-	"github.com/chu0119/pojun/vulnintel"
+	"github.com/Aiid0/Pyke/agent"
+	pgdb "github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/enrich"
+	"github.com/Aiid0/Pyke/guard"
+	"github.com/Aiid0/Pyke/intercept"
+	"github.com/Aiid0/Pyke/traffic"
+	"github.com/Aiid0/Pyke/vulnintel"
 )
 
 // Task is one engagement: a description + goal + its own exploration store,
@@ -1100,7 +1100,7 @@ func (m *Manager) maintenanceProxy() string {
 	}
 	// 环境变量兜底：Docker 形态没有 config.json，install.sh 只能通过 compose
 	// 传进来；这里让它与数据库 setting 同等生效（数据库优先，可被页面改写）。
-	if v := strings.TrimSpace(os.Getenv("POJUN_INSTALL_PROXY")); v != "" {
+	if v := strings.TrimSpace(envCompat("PYKE_INSTALL_PROXY", "POJUN_INSTALL_PROXY")); v != "" {
 		return v
 	}
 	if p := m.GlobalProxy(); p != "" {

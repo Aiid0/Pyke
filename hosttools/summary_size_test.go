@@ -10,7 +10,9 @@ import (
 func TestSummaryStaysCompact(t *testing.T) {
 	s := Summary()
 	b, _ := json.Marshal(s)
-	if len(b) > 4000 {
+	// v0.4.69 目录扩到 90 件后实测 ~5.1KB（约 1.3K token），4000 旧上限已不现实；
+	// 5500 仍保留增长护栏（每项含用途一句话）。
+	if len(b) > 5500 {
 		t.Errorf("工具清单 %d 字节，太大会撑爆每轮 prompt", len(b))
 	}
 	// 每项都必须带用途（模型要知道这个工具是干嘛的）

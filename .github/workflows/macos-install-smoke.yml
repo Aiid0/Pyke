@@ -7,7 +7,7 @@
 #   （KeepAlive）→ /api/health 200 → 幂等重跑（升级路径不动数据）。
 #
 # 不在范围：LibreOffice cask（约 400MB 下载，仅提示不安装）、渗透工具链、
-# pojun-hostd（macOS 本就不支持）。这些在文档里如实说明。
+# pyke-hostd（macOS 本就不支持）。这些在文档里如实说明。
 #
 # runner 用 macos-15（ARM）：macos-14 已被 GitHub 淘汰（label 不可用）。
 # 版本默认冒烟当前最新 Release（用 -y 非交互模式）。
@@ -28,10 +28,22 @@ jobs:
     timeout-minutes: 30
     env:
       # 冒烟钉一个明确的已发布版本，避免 latest 变动导致不可复现；
-      # 版本里有 darwin 包自 v0.4.66 起。
-      POJUN_SMOKE_VERSION: v0.4.66
+      # v0.5.0 起发布资产更名为 pyke-*，install.sh 按新名取包。
+      PYKE_SMOKE_VERSION: v0.5.0
     steps:
       - uses: actions/checkout@v5
+
+      - name: Gate on pyke assets availability
+        id: gate
+        run: |
+          # v0.5.0 发布前该 Release 没有 pyke-* darwin 资产：跳过冒烟保持 CI 绿，
+          # 发布后自动恢复全量冒烟。
+          if curl -fsSLI "https://github.com/${GITHUB_REPOSITORY}/releases/download/${PYKE_SMOKE_VERSION}/pyke-${PYKE_SMOKE_VERSION#v}-darwin-arm64.zip" >/dev/null 2>&1; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "${PYKE_SMOKE_VERSION} 的 pyke-* darwin 资产尚未发布，跳过 macOS 冒烟"
+          fi
 
       - name: Pre-flight
         run: |
@@ -42,9 +54,10 @@ jobs:
           python3 --version
 
       - name: Run install.sh (macOS / binary / non-interactive)
+        if: steps.gate.outputs.skip != 'true'
         run: |
           set -o pipefail
-          bash install.sh --mode=binary -y --version="$POJUN_SMOKE_VERSION" 2>&1 | tee /tmp/install.log
+          bash install.sh --mode=binary -y --version="$PYKE_SMOKE_VERSION" 2>&1 | tee /tmp/install.log
           rc=$?
           echo "install.sh pipeline exit code: $rc"
           echo "── install.log 完整尾部 ──"
@@ -52,7 +65,7 @@ jobs:
           # 关键里程碑必须在输出里出现，防止脚本静默降级
           grep -q "PostgreSQL 就绪" /tmp/install.log
           grep -q "SHA256 校验通过" /tmp/install.log
-          grep -q "数据库 pojun 就绪" /tmp/install.log
+          grep -q "数据库 pyke 就绪" /tmp/install.log
           grep -q "launchd 服务已注册" /tmp/install.log
           # 诊断：中文 grep 在 macos runner 上曾莫名失败——失败时 dump 字节真相
           grep -q "服务已就绪" /tmp/install.log || {
@@ -66,38 +79,41 @@ jobs:
           }
 
       - name: Verify service (launchd / health / database)
+        if: steps.gate.outputs.skip != 'true'
         run: |
           set -e
           # launchd 服务在跑
-          launchctl print "gui/$(id -u)/com.pojun" | grep -q "state = running" \
-            || launchctl print "gui/$(id -u)/com.pojun" | grep -E "pid = [0-9]+"
+          launchctl print "gui/$(id -u)/com.pyke" | grep -q "state = running" \
+            || launchctl print "gui/$(id -u)/com.pyke" | grep -E "pid = [0-9]+"
           # 健康检查
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/health)
-          [ "$code" = "200" ] || { echo "health=$code"; tail -50 ~/pojun/pojun.launchd.log; exit 1; }
+          [ "$code" = "200" ] || { echo "health=$code"; tail -50 ~/pyke/pyke.launchd.log; exit 1; }
           echo "health 200 OK"
           # 数据库角色与库（psql 默认连用户同名库，runner 用户 runner 没有同名库）
           PGBIN="$(brew --prefix)/opt/postgresql@16/bin"
-          "$PGBIN/psql" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='pojun'" | grep -q 1
-          "$PGBIN/psql" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='pojun'" | grep -q 1
+          "$PGBIN/psql" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='pyke'" | grep -q 1
+          "$PGBIN/psql" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='pyke'" | grep -q 1
           # config.json 权限
-          [ "$(stat -f '%Lp' ~/pojun/config.json)" = "600" ]
+          [ "$(stat -f '%Lp' ~/pyke/config.json)" = "600" ]
 
       - name: Verify idempotent re-run (upgrade path)
+        if: steps.gate.outputs.skip != 'true'
         run: |
           # 二次执行 = 原地升级：config.json / 数据库必须原样保留
-          md5_before=$(md5 -q ~/pojun/config.json)
-          bash install.sh --mode=binary -y --version="$POJUN_SMOKE_VERSION" >/tmp/reinstall.log 2>&1
+          md5_before=$(md5 -q ~/pyke/config.json)
+          bash install.sh --mode=binary -y --version="$PYKE_SMOKE_VERSION" >/tmp/reinstall.log 2>&1
           grep -q "沿用既有 config.json" /tmp/reinstall.log
-          md5_after=$(md5 -q ~/pojun/config.json)
+          md5_after=$(md5 -q ~/pyke/config.json)
           [ "$md5_before" = "$md5_after" ] || { echo "config.json 被覆盖！"; exit 1; }
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/api/health)
           [ "$code" = "200" ] || { echo "reinstall health=$code"; exit 1; }
           echo "idempotent re-run OK (health 200, config preserved)"
 
       - name: Verify KeepAlive (kill process, launchd revives)
+        if: steps.gate.outputs.skip != 'true'
         run: |
-          # KeepAlive 语义验证：杀掉 pojun 进程，launchd + start.sh 应把它拉回来
-          pkill -x pojun || true
+          # KeepAlive 语义验证：杀掉 pyke 进程，launchd + start.sh 应把它拉回来
+          pkill -x pyke || true
           sleep 15
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8787/api/health)
           [ "$code" = "200" ] || { echo "after kill health=$code"; exit 1; }
@@ -109,4 +125,4 @@ jobs:
           echo "── install.log tail ──"
           tail -20 /tmp/install.log 2>/dev/null || true
           echo "── launchd log tail ──"
-          tail -20 ~/pojun/pojun.launchd.log 2>/dev/null || true
+          tail -20 ~/pyke/pyke.launchd.log 2>/dev/null || true

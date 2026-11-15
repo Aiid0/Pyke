@@ -7,7 +7,7 @@ tags:
   class: [src, knowledge-base, methodology, recon, exploit-playbook]
 ---
 
-# SRC 漏洞挖掘方法论库（Pojun 适配版）
+# SRC 漏洞挖掘方法论库（Pyke 适配版）
 
 本技能是 SRC/众测场景的**知识库入口**：`references/`（48 篇专题测试方法）与 `rules/`（11 篇流程/价值/报告规则）随技能分发，按需用 Read/Bash 打开，**禁止通读**。
 
@@ -24,7 +24,7 @@ tags:
 | 鉴权对照 | `auth_request`（用已登记凭据组请求）+ `diff_responses` |
 | SPA/webpack 源码泄露 | `js_audit`（sourcemap 还原+密钥/接口抽取，Vue/React 必跑） |
 | 新资产入库 | `insert_assets` / `add_task_scope` |
-| 产物落盘 | 任务目录 `/opt/pojun/data/tasks/<id>/`（rules 里提到的「桌面任务文件夹」以本目录为准） |
+| 产物落盘 | 任务目录 `/opt/pyke/data/tasks/<id>/`（rules 里提到的「桌面任务文件夹」以本目录为准） |
 
 知识库中的文件路径：`${SKILL_DIR}/references/<名>.md`，规则：`${SKILL_DIR}/rules/<名>.md`。
 
@@ -116,7 +116,7 @@ tags:
 | skill-as-boost.md | 技能使用方式（按需打开，不通读） |
 | playwright-browser-mcp.md | 浏览器自动化（平台用内置 playwright-cli skill / MCP 预设，路径按平台） |
 | cors-vuln-report-priority.md | CORS 上报优先级（SRC 不挖） |
-| desktop-task-folder.md | 任务目录规范（平台以 `/opt/pojun/data/tasks/<id>/` 为准） |
+| desktop-task-folder.md | 任务目录规范（平台以 `/opt/pyke/data/tasks/<id>/` 为准） |
 
 ## 与既有 skill 的分工
 

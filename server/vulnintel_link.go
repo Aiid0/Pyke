@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/vulnintel"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/vulnintel"
 )
 
 // linkVulnIntelAssets runs after each vulnintel sync pass: newly synced CVEs

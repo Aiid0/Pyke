@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/traffic"
+	"github.com/Aiid0/Pyke/traffic"
 	actool "github.com/Autumn-27/norma/tool"
 )
 

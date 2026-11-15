@@ -6,16 +6,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
-// testStore mirrors the other packages' testmain pattern: without POJUN_PG_DSN
+// testStore mirrors the other packages' testmain pattern: without PYKE_PG_DSN
 // the suite skips (tables live in the shared idempotent schema).
 func testStore(t *testing.T) *Store {
 	t.Helper()
-	dsn := os.Getenv("POJUN_PG_DSN")
+	dsn := os.Getenv("PYKE_PG_DSN")
 	if dsn == "" {
-		t.Skip("requires POJUN_PG_DSN")
+		t.Skip("requires PYKE_PG_DSN")
 	}
 	pg, err := db.Open(dsn)
 	if err != nil {

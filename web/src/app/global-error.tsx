@@ -12,7 +12,7 @@ type ErrorProps = {
 
 export default function GlobalError({ error, reset }: ErrorProps) {
   React.useEffect(() => {
-    console.error("[pojun] 应用级错误:", error);
+    console.error("[pyke] 应用级错误:", error);
   }, [error]);
 
   const text = [error?.name, error?.message].filter(Boolean).join(": ") || String(error);

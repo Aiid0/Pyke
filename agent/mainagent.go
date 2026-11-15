@@ -9,9 +9,9 @@ import (
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/hosttools"
-	"github.com/chu0119/pojun/intercept"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/hosttools"
+	"github.com/Aiid0/Pyke/intercept"
 )
 
 // MainAgent is the thin human-interface orchestrator (docs §4.2 / §7). The human

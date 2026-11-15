@@ -14,15 +14,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/traffic"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/traffic"
 )
 
 func evidenceFixture(t *testing.T) (*Store, db.RecordFindingInput, string) {
 	t.Helper()
-	dsn := os.Getenv("POJUN_PG_DSN")
+	dsn := os.Getenv("PYKE_PG_DSN")
 	if dsn == "" {
-		t.Skip("POJUN_PG_DSN is required for evidence integration tests")
+		t.Skip("PYKE_PG_DSN is required for evidence integration tests")
 	}
 	pg, err := db.Open(dsn)
 	if err != nil {

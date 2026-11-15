@@ -127,7 +127,8 @@ import type {
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("pojun_token");
+  // 更名过渡：pyke_token 优先，旧 pojun_token 兜底（一个版本周期后移除）。
+  return localStorage.getItem("pyke_token") ?? localStorage.getItem("pojun_token");
 }
 
 export async function http<T>(path: string, init?: RequestInit): Promise<T> {
@@ -149,7 +150,9 @@ export async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (r.status === 401) {
     if (typeof window !== "undefined") {
+      localStorage.removeItem("pyke_token");
       localStorage.removeItem("pojun_token");
+      document.cookie = "pyke_token=; path=/; max-age=0";
       document.cookie = "pojun_token=; path=/; max-age=0";
       window.location.href = "/login";
     }
@@ -953,7 +956,7 @@ export const api = {
       summary: { available: string[]; missing: { name: string; install: string }[]; hint: string };
       deploy_mode: "docker" | "host";
     }>(`/tools/inventory`),
-  // 宿主环境:体检(含一键安装可用性)+ 一键安装(由特权助手 pojun-hostd 执行)
+  // 宿主环境:体检(含一键安装可用性)+ 一键安装(由特权助手 pyke-hostd 执行)
   hostenvStatus: () => get<HostenvStatus>(`/hostenv/status`),
   hostenvInstall: (id: string) => post<InstallJob>(`/hostenv/install`, { id }),
   hostenvInstallBatch: (ids: string[]) => post<InstallBatchResult>(`/hostenv/install-batch`, { ids }),
@@ -1020,7 +1023,7 @@ export const api = {
     });
     if (!r.ok) throw new Error(`docx: ${r.status}`);
     const blob = await r.blob();
-    triggerBlobDownload(blob, `pojun-report-${task || "active"}-${new Date().toISOString().slice(0, 10)}.docx`);
+    triggerBlobDownload(blob, `pyke-report-${task || "active"}-${new Date().toISOString().slice(0, 10)}.docx`);
   },
   // 单漏洞 Word 导出
   downloadFindingDocx: async (id: number | string) => {
@@ -1030,7 +1033,7 @@ export const api = {
     });
     if (!r.ok) throw new Error(`docx: ${r.status}`);
     const blob = await r.blob();
-    triggerBlobDownload(blob, `pojun-finding-${id}-${new Date().toISOString().slice(0, 10)}.docx`);
+    triggerBlobDownload(blob, `pyke-finding-${id}-${new Date().toISOString().slice(0, 10)}.docx`);
   },
   chatMentions: (kind: string, query: string, signal?: AbortSignal, cursor = "") =>
     http<{ items: ChatMention[]; next_cursor?: string }>(

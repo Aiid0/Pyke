@@ -27,14 +27,21 @@ import (
 //
 // 但「本机 SMTP 中继」（127.0.0.1:25 上的 postfix）是自建邮件的常见配置，
 // 一刀切会把人卡住。所以留一个显式逃生口而不是硬编码放行：
-// 设置 POJUN_NOTIFY_ALLOW_LOCAL=1 即允许。
+// 设置 PYKE_NOTIFY_ALLOW_LOCAL=1 即允许。
 //
 // 导出为 AllowLocalTargetsEnv 是为了让测试能明确地打开它——本包与 server 包的
 // 用例大量使用 127.0.0.1 上的 httptest 假接收端，不打开就全部被守卫拦下。
-const AllowLocalTargetsEnv = "POJUN_NOTIFY_ALLOW_LOCAL"
+const AllowLocalTargetsEnv = "PYKE_NOTIFY_ALLOW_LOCAL"
+
+// legacyAllowLocalTargetsEnv 是 v0.5.0 更名（pojun→pyke）前的旧变量名，
+// 过渡期兼容读取一个版本后移除。
+const legacyAllowLocalTargetsEnv = "POJUN_NOTIFY_ALLOW_LOCAL"
 
 func allowLocalTargets() bool {
 	v := strings.TrimSpace(os.Getenv(AllowLocalTargetsEnv))
+	if v == "" {
+		v = strings.TrimSpace(os.Getenv(legacyAllowLocalTargetsEnv))
+	}
 	return v == "1" || strings.EqualFold(v, "true")
 }
 

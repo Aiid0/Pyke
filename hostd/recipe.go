@@ -1,4 +1,4 @@
-// Package hostd:POJUN 的特权安装助手(pojun-hostd)。
+// Package hostd:Pyke 的特权安装助手(pyke-hostd)。
 //
 // 为什么需要它:主服务 systemd 单元带 NoNewPrivileges=true + ProtectSystem=strict
 // + CapabilityBoundingSet=CAP_NET_BIND_SERVICE,进程无法提权、/usr 只读——所以
@@ -16,7 +16,7 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/chu0119/pojun/hosttools"
+	"github.com/Aiid0/Pyke/hosttools"
 )
 
 // PkgMgr 系统包管理器。
@@ -142,7 +142,7 @@ func pipArgv(tool hosttools.Tool, proxy string) []string {
 		if _, err := os.Stat("/usr/bin/pipx"); err == nil {
 			argv := []string{"pipx", "install"}
 			// root 下必须 --global：否则入口脚本落 /root/.local/bin，
-			// 服务用户 pojun 既穿不过 /root 也不在 PATH（install.sh 同款坑）。
+			// 服务用户 pyke 既穿不过 /root 也不在 PATH（install.sh 同款坑）。
 			if runningAsRoot() {
 				argv = append(argv, "--global")
 			}

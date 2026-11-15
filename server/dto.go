@@ -6,12 +6,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chu0119/pojun/db"
-	"github.com/chu0119/pojun/traffic"
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/traffic"
 )
 
 // DTO/serialization layer: each handler emits EXACTLY the frontend's spec shapes
-// (pojun/web/src/lib/types.ts). These reshape db package structs so the
+// (web/src/lib/types.ts). These reshape db package structs so the
 // internal DB model never leaks over the API. The db structs and the frontend are
 // the canonical contracts; this file maps one onto the other.
 

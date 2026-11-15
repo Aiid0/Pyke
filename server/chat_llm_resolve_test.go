@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 // TestChatUnavailableReasonDistinguishesStates pins the operator-facing message

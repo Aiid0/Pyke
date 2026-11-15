@@ -32,13 +32,13 @@ func TestJsAuditComposesCommand(t *testing.T) {
 	if out.Count != 2 {
 		t.Fatalf("count=%d want 2（非法 URL 与重复项应剔除）", out.Count)
 	}
-	if !strings.Contains(out.RunWithBash, "pojun-jsaudit.py") ||
+	if !strings.Contains(out.RunWithBash, "pyke-jsaudit.py") ||
 		!strings.Contains(out.RunWithBash, "--out") ||
 		!strings.Contains(out.RunWithBash, "app.9f2c1d.js") {
 		t.Fatalf("command=%q", out.RunWithBash)
 	}
 	// 脚本落盘且是合法 python（py_compile 由 CI 外部验证；这里只查非空）。
-	p := filepath.Join(dir, "pojun-jsaudit.py")
+	p := filepath.Join(dir, "pyke-jsaudit.py")
 	info, err := os.Stat(p)
 	if err != nil {
 		t.Fatalf("script missing: %v", err)

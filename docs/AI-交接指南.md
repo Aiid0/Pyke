@@ -1,14 +1,14 @@
 # AI 交接指南（接手本项目的 AI 请先完整读完）
 
 > 最后更新：2026-11-07（v0.4.62 已发布并部署测试机）
-> 读者：接手破军 Pojun 项目的 AI 助手。本文假设你会读代码、跑测试、操作 Linux。
+> 读者：接手 Pyke 项目的 AI 助手。本文假设你会读代码、跑测试、操作 Linux。
 > 凭据（SSH/数据库密码/LLM key）**不写入本仓库**（它是公开仓库），只存在于维护者本地记忆文件中——需要时向维护者要。
 
 ## 1. 项目是什么
 
-**破军 Pojun**（`github.com/chu0119/Pojun`，2026-11-02 前名 ARTEX）是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标，自动完成「目标拆解 → 侦察 → 漏洞挖掘 → 利用 → 后渗透 → 报告」全流程，人随时插手纠偏。
+**Pyke**（`github.com/Aiid0/Pyke`；历史：2026-11-02 前名 ARTEX，2026-11-02 定名破军 Pojun，2026-11-15 更名 Pyke v0.5.0）是一套 **LLM 多 Agent 自主渗透测试平台**：给一句话目标，自动完成「目标拆解 → 侦察 → 漏洞挖掘 → 利用 → 后渗透 → 报告」全流程，人随时插手纠偏。
 
-- **Go 单体后端**（`github.com/chu0119/pojun`，内嵌 Next.js 静态前端 `-tags embedui`）
+- **Go 单体后端**（`github.com/Aiid0/Pyke`，内嵌 Next.js 静态前端 `-tags embedui`）
 - **PostgreSQL** 是唯一持久层（schema.sql 幂等迁移）
 - Agent 引擎基于 **norma SDK**（fork：`go.mod` replace 到 `github.com/chu0119/Norma`）
 - 定位：Linux 服务器常驻部署，仅用于授权渗透测试/SRC
@@ -21,14 +21,14 @@
 | 位置 | 内容 |
 |---|---|
 | `D:\xiangmu\aiai\ARTEX` | 主仓工作区（Windows，Git Bash） |
-| `github.com/chu0119/Pojun` | 主仓（PUBLIC，ghcr.io/chu0119/pojun 镜像随 tag 自动发布） |
-| `D:\xiangmu\ARTEX-SKILL` → `chu0119/pojun-skill` | 单技能可移植版（v2.0，与平台方法论同源，改动要双向同步） |
+| `github.com/Aiid0/Pyke` | 主仓（PUBLIC，ghcr.io/aiid0/pyke 镜像随 tag 自动发布） |
+| `D:\xiangmu\ARTEX-SKILL` → `chu0119/pojun-skill` | 单技能可移植版（v2.0，与平台方法论同源；**外部项目、非本人所有**，不随平台改名） |
 | `github.com/chu0119/Norma` | agent harness SDK fork（go.mod replace 指向它；改 SDK 要单独发版并 bump replace 版本） |
-| **Kali 测试机** `192.168.198.128` | 真实运行实例（SSH 用户 xingchuan，paramiko 直连；凭据见本地记忆）。服务：`systemctl {pojun,pojun-hostd}`，目录 `/opt/pojun`，DB 是 PostgreSQL 库 **`artex`**（历史残留名），实例以 `pojun` 用户运行 |
-| 本机 Docker | 测试 PG：容器 `pojun-audit-pg`（端口 15432，跑测试前 `docker start`） |
+| **Kali 测试机** `192.168.198.128` | 真实运行实例（SSH 用户 xingchuan，paramiko 直连；凭据见本地记忆）。服务：`systemctl {pyke,pyke-hostd}`（v0.5.0 前装的老实例仍为 `systemctl {pojun,pojun-hostd}`，目录 `/opt/pojun`），DB 是 PostgreSQL 库 **`artex`**（历史残留名），实例以 `pojun` 用户运行 |
+| 本机 Docker | 测试 PG：容器 `pyke-audit-pg`（端口 15432，跑测试前 `docker start`；旧容器名 pojun-audit-pg 仍在用则继续用） |
 | 公网机 120.55.171.237 | 半部署交接态（用户自管，v0.3.85+nginx），不要主动动 |
 
-**测试数据库**：本机 `POJUN_PG_DSN='postgres://pojun:pojuntest@127.0.0.1:15432/pojun_ci?sslmode=disable'`；跑测试前 `docker exec pojun-audit-pg psql -U pojun -d postgres -c "DROP DATABASE IF EXISTS pojun_ci; CREATE DATABASE pojun_ci;"`（共享库残留数据会造成假失败）。
+**测试数据库**：本机 `PYKE_PG_DSN='postgres://pyke:pyketest@127.0.0.1:15432/pyke_ci?sslmode=disable'`；跑测试前 `docker exec pyke-audit-pg psql -U pyke -d postgres -c "DROP DATABASE IF EXISTS pyke_ci; CREATE DATABASE pyke_ci;"`（共享库残留数据会造成假失败）。
 
 ## 3. 核心机制 → 代码位置（改哪里）
 
@@ -43,7 +43,7 @@
 | 证据分级与机械验证 | `agent/finding_recorder.go`（validateFindingEvidence/validateMechanicalEvidence）、`agent/tools.go` addFinding（ToolOutputLedger 证据源核验） | critical/high 必须有可机械复现凭据（HTTP 状态码/curl 输出/工具命中），纯版本匹配会被打回；上报时自动回溯绑定同意图产物、自动锚定资产 |
 | 技能体系 | `skills/` 目录（21 个）、`agent/assembly.go`+`server/assembly.go`（wireAgentAugment + SkillIndexBlock 注入 renderSystem）、`db/db.go` builtinSkillVisibility | **新 skill 必须做三件事**：①SKILL.md frontmatter（name/description，缺一加载即空）②加进 builtinSkillVisibility 默认绑定（否则守门测试红）③发布包/镜像含它（build.sh 已 `cp -R skills`）。守门测试：`db/skill_visibility_test.go`（每个 skill 必须绑定或有 optOut；src-hunting 知识库完整性） |
 | Skill 元工具调用率 | `server/assembly.go`（SkillIndexBlock → renderSystem 注入速查块） | **教训**：Skill 是元工具，模型不被 system prompt 显式提醒几乎不会调（曾 56k 调用仅 8 次）。任何「希望 agent 主动用的东西」都要进 system prompt |
-| MCP | `server/server_mgmt.go`（pgSaveMCP 等）、`mcphttp/client.go`（HTTP/SSE）、norma `mcp` 包（stdio）、前端预设 `web/src/app/(main)/system/mcp/page.tsx` mcpPresets | 内置 FOFA MCP 在 `mcp-servers/fofa/`（uv 拉起，相对路径靠服务 cwd=/opt/pojun 或 /app）；**预设 9 个**；新增预设改 mcpPresets 数组 |
+| MCP | `server/server_mgmt.go`（pgSaveMCP 等）、`mcphttp/client.go`（HTTP/SSE）、norma `mcp` 包（stdio）、前端预设 `web/src/app/(main)/system/mcp/page.tsx` mcpPresets | 内置 FOFA MCP 在 `mcp-servers/fofa/`（uv 拉起，相对路径靠服务 cwd=/opt/pyke（v0.5.0 前老实例为 /opt/pojun）或 /app）；**预设 9 个**；新增预设改 mcpPresets 数组 |
 | js_audit（SPA 源码泄露） | `agent/tools_jsaudit.go` | 检测链：HTML→script/chunk→sourceMappingURL+`.map` 兜底→sourcesContent 还原落盘→密钥/接口扫描；**SPA fallback 200≠命中**（要 JSON+sources 才算） |
 | http_probe / auth_request / diff_responses / api_contract | `agent/tools_probe.go` 等 | 模式统一：**只落脚本+组命令，不自己发请求**——流量照常过 MITM 留证、审批照常生效。新领域工具照这个模式写 |
 | 漏洞情报 | `vulnintel/`、`agent/tools_vulnintel.go`（search_vulns/get_vuln/get_poc/scan_with_nuclei） | NVD+KEV+GHSA+PoC 同步；版本区间三态判定；「版本匹配≠漏洞」 |
@@ -59,7 +59,7 @@
 3. **CHANGELOG.md** 加条目（锚点用 `assert` 防 replace 静默失败）。
 4. **commit + tag + push**：`git add -A && git commit && git tag v0.4.x && git push origin main v0.4.x`。版本号小步递增（用户明确要求不提大版本）。本机网络对 GitHub 不稳：push 失败先重试，再走仓库级代理（已配 `git config http.proxy http://127.0.0.1:7897`）。
 5. **CI（release.yml）自动**：交叉编译 linux amd64+arm64 → zip+SHA256SUMS → GitHub Release → **docker 多架构镜像推 ghcr**。⚠️ CI 会用自己的打包覆盖手动上传的同名资产（属正常，最终自洽）；CI 的 SHA256SUMS 若内容陈旧要手动覆盖。
-6. **部署 Kali**（paramiko 配方）：sftp 上传 `dist/pojun-linux-amd64/pojun` → `systemctl stop pojun`（hostd 一并）→ `install -m 0755 /tmp/pojun /opt/pojun/.pojun.new && mv -f ... /opt/pojun/pojun`（ETXTBSY 安全换装）→ `chown pojun:pojun` → start → `journalctl -u pojun | grep POJUN` 核对版本行 → `/api/health` 200。若改了 skills/mcp-servers/前端，这些也要同步（或直接跑 install.sh 走 file:// 本地源）。
+6. **部署 Kali**（paramiko 配方，v0.5.0 前的老布局仍按 pojun 命名）：sftp 上传 `dist/pyke-linux-amd64/pyke` → `systemctl stop pyke`（hostd 一并）→ `install -m 0755 /tmp/pyke /opt/pyke/.pyke.new && mv -f ... /opt/pyke/pyke`（ETXTBSY 安全换装）→ `chown pyke:pyke` → start → `journalctl -u pyke | grep -i pyke` 核对版本行 → `/api/health` 200。若改了 skills/mcp-servers/前端，这些也要同步（或直接跑 install.sh 走 file:// 本地源；v0.5.0 起 install.sh 会自动把 /opt/pojun 旧安装迁移到 /opt/pyke）。
 
 ## 5. 测试纪律
 

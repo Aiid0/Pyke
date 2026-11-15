@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 // autopilot 目标续杯（v0.6.7）。

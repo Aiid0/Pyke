@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chu0119/pojun/db"
+	"github.com/Aiid0/Pyke/db"
 )
 
 // testDB opens a DB connection, skipping if PG is unavailable.
