@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.4.71] - 2026-11-15
+
+### 变更
+
+- **发布链路指向本仓库 Aiid0/Pyke**：install.sh 的 REPO、selfupdate 的 Repo 默认值、
+  docker-compose 默认镜像、release.yml 的 GHCR 镜像名（改为 `ghcr.io/<owner>/pojun`
+  动态取当前仓库并转小写）——fork 从此发布/安装/自更新全部走自己的 Release。
+  Docker Hub 步骤维持「未配 secrets 自动跳过」。
+
 ### 修复
 
 - **tools.agents 脏数据（diff_responses 重复登记）**：MainAgentTools 里 diff_responses

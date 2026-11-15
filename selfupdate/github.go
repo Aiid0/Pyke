@@ -17,7 +17,7 @@ import (
 // 一条远程代码执行通道，对一个渗透测试平台来说这个口子开不得。二开/镜像要在构建时
 // 用 `-ldflags "-X github.com/chu0119/pojun/selfupdate.Repo=owner/name"` 覆盖，
 // 这样改的是产物本身，不是运行期可篡改的开关。
-var Repo = "chu0119/pojun"
+var Repo = "Aiid0/Pyke"
 
 func latestURL() string { return "https://api.github.com/repos/" + Repo + "/releases/latest" }
 

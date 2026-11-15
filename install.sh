@@ -18,7 +18,7 @@
 #       Docker   cd /opt/pojun && docker compose down -v && rm -rf /opt/pojun
 set -euo pipefail
 
-REPO="chu0119/Pojun"
+REPO="Aiid0/Pyke"
 INSTALL_DIR="/opt/pojun"
 SERVICE="pojun"
 RUN_USER="pojun"
