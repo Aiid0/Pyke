@@ -1,0 +1,12 @@
+[project]
+name = "vm-lab"
+version = "0.1.0"
+description = "VirtualBox 靶机控制与攻击效果验证 MCP server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.9.0,<2",
+]
+
+[project.scripts]
+vm-lab-mcp = "vm_lab:main"

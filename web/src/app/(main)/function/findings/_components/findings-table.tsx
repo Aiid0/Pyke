@@ -433,7 +433,7 @@ export function FindingsTable({
                               // whitespace-pre-wrap 让代码块也换行——否则长代码行/长 URL
                               // 会撑宽 colSpan 单元格,把整张表挤出横向滚动条。
                               <div className="min-w-0 break-words rounded-md border bg-background px-3 py-2 [&_pre]:whitespace-pre-wrap">
-                                <Markdown text={rep.text} />
+                                <Markdown text={rep.text} taskId={f.task_id ? String(f.task_id) : undefined} />
                               </div>
                             );
                           })()}

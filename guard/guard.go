@@ -11,10 +11,12 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/chu0119/pojun/intercept"
+	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/hook"
 )
 
@@ -71,32 +73,65 @@ func newGuard(ic *intercept.Interceptor) *Guard {
 func (g *Guard) Hooks() *hook.Registry { return g.reg }
 
 func (g *Guard) preToolUse(ctx context.Context, ev hook.Event) hook.Result {
+	// MCP/deferred 工具经 norma ExecuteExtraTool 中转：外层 tool_use 的名字固定是
+	// ExecuteExtraTool，内层 {tool_name, params} 才是真正要执行的东西。拦截与审计
+	// 必须解包到内层，否则 mcp__vm-lab__vm_exec 这类调用对三层闸门完全隐身
+	// （v0.4.71 之前 MCP 调用确实绕过拦截——缺口在解包缺失，不在规则引擎）。
+	name, input := ev.ToolName, ev.Input
+	if name == actool.ExecuteExtraToolName {
+		var d struct {
+			ToolName string          `json:"tool_name"`
+			Params   json.RawMessage `json:"params"`
+		}
+		if json.Unmarshal(ev.Input, &d) == nil && d.ToolName != "" {
+			name = d.ToolName
+			input = d.Params
+			if len(input) == 0 {
+				input = json.RawMessage("{}")
+			}
+		}
+	}
 	// Extract the shell-command surface for the audit log: Bash + the interactive-shell
 	// tools (shell_open's command, shell_send's text). Destructive/exfil gating is no
 	// longer hard-coded here — it now lives in the DB intercept rules, evaluated by
 	// applyIntercept below. Other tools record an empty command.
 	var cmd string
-	switch ev.ToolName {
+	switch name {
 	case "Bash", "shell_open":
 		var in struct {
 			Command string `json:"command"`
 		}
-		_ = json.Unmarshal(ev.Input, &in)
+		_ = json.Unmarshal(input, &in)
 		cmd = in.Command
 	case "shell_send":
 		var in struct {
 			Text string `json:"text"`
 		}
-		_ = json.Unmarshal(ev.Input, &in)
+		_ = json.Unmarshal(input, &in)
 		cmd = in.Text
+	default:
+		if intercept.IsMCPToolName(name) {
+			cmd = truncateInput(input)
+		}
 	}
 	// 审计只留一条：被拦截的调用由 block() 记 "block"，这里不再先记 "allow"，
 	// 否则同一次调用在审计里既像放行又像拦截，复盘时无法区分。
-	res := g.applyIntercept(ctx, ev)
+	evt := hook.Event{ToolName: name, Input: input, Result: ev.Result, IsError: ev.IsError}
+	res := g.applyIntercept(ctx, evt)
 	if res.Decision != "block" {
-		g.record(ev.ToolName, "allow", "", cmd)
+		g.record(name, "allow", "", cmd)
 	}
 	return res
+}
+
+// truncateInput renders a tool's raw JSON input as a bounded one-line string for
+// the audit log (MCP tool params are the only command surface they have).
+func truncateInput(input json.RawMessage) string {
+	s := strings.TrimSpace(string(input))
+	if len(s) > attribSampleMaxBytes {
+		s = s[:attribSampleMaxBytes] + "…"
+	}
+	return s
 }
 
 // applyIntercept evaluates user-configured intercept rules against the tool call.

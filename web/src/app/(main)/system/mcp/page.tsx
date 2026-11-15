@@ -148,6 +148,15 @@ const mcpPresets: MCPPreset[] = [
     requires: "需 uv（--with-tools 已装）；环境变量填 FOFA_EMAIL/FOFA_KEY",
   },
   {
+    name: "vm-lab",
+    title: "VM Lab 靶机控制",
+    description: "VirtualBox 靶机快照重置 / guest 内取证（vm_exec）/ VM 截图——RCE 后攻击效果验证。",
+    transport: "stdio",
+    command: "uv",
+    args: "--directory mcp-servers/vm-lab run python vm_lab.py",
+    requires: "需 uv + VBoxManage 可达（驱动 VM_DRIVER=auto/local/win-interop/ssh）；vm_exec 需 Guest Additions，凭据填 VM_GUEST_USER/VM_GUEST_PASSWORD",
+  },
+  {
     name: "context7",
     title: "Context7 文档检索",
     description: "按库名检索最新官方文档与用法（写 PoC 时查 API）。",

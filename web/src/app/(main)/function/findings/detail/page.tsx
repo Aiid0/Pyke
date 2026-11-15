@@ -227,7 +227,7 @@ function FindingDetailInner() {
                     </Alert>
                   ) : null}
                   {finding.report ? (
-                    <Markdown text={finding.report} />
+                    <Markdown text={finding.report} taskId={finding.task_id ? String(finding.task_id) : contextTaskId} />
                   ) : (
                     <p className="text-muted-foreground text-sm">暂无详细报告。</p>
                   )}

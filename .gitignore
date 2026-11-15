@@ -39,6 +39,7 @@ config.json
 # IDE/编辑器
 .idea/
 .vscode/
+.zcode/
 *.swp
 *.swo
 *~
@@ -56,5 +57,6 @@ Thumbs.db
 # Python 缓存
 __pycache__/
 *.pyc
+.venv/
 .build-tmp/
 peers/

@@ -275,6 +275,17 @@ ON CONFLICT (name) DO NOTHING`,
 		`["@playwright/mcp","--headless"]`); err != nil {
 		return fmt.Errorf("seed browser mcp: %w", err)
 	}
+	// Seed the built-in vm-lab (VirtualBox 靶机控制) MCP once — DISABLED by default.
+	// 攻击效果验证用：快照重置 / guest 内取证（vm_exec）/ VM 截图。用户在 MCP 页
+	// 启用后按需填驱动（VM_DRIVER 等）与 guest 凭据（只进 env）。Insert-only，
+	// 不覆盖用户改动（与 browser 同约定）。
+	if _, err := d.Exec(`
+INSERT INTO mcp_servers(name, transport, command, args, env, enabled)
+VALUES ('vm-lab', 'stdio', 'uv', $1, '{}', false)
+ON CONFLICT (name) DO NOTHING`,
+		`["--directory","mcp-servers/vm-lab","run","python","vm_lab.py"]`); err != nil {
+		return fmt.Errorf("seed vm-lab mcp: %w", err)
+	}
 	// NOTE: the placeholder ScopeSentry data-source MCP (empty URL + empty X-API-Key,
 	// disabled) is seeded directly in schema.sql §F so a raw `psql < schema.sql` init
 	// also gets it. schema.sql is Exec'd on every startup, so it stays idempotent.
@@ -386,6 +397,8 @@ var builtinSkillVisibility = map[string][]string{
 	"src-hunting": {"planner", "pentest", "worker"},
 	// 浏览器自动化：worker 做 SPA/登录态探测时可用
 	"playwright-cli": {"pentest", "worker"},
+	// 靶机攻击效果验证：绑定 vm-lab MCP（快照重置/guest 取证），worker 验证 RCE 后果
+	"vm-lab-verification": {"pentest", "worker"},
 	"apk-reverse":    {"pentest", "worker"},
 }
 

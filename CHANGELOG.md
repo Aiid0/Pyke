@@ -4,6 +4,39 @@
 
 ## [Unreleased]
 
+### 修复
+
+- **tools.agents 脏数据（diff_responses 重复登记）**：MainAgentTools 里 diff_responses
+  曾登记两次，BuiltinToolSeeds 的合并循环对 agent key 原样追加，tools.agents 落成
+  `["mainagent","mainagent",...]`（前端按数组元素作渲染 key，触发 React 重复 key
+  告警）。三层修复：源头清单去重（tools_insert.go）+ 种子合并按 agent 去重
+  （toolcatalog.go，附回归测试）+ 存量一次性清洗（DedupeToolAgents，按首次出现
+  保序重写 system 工具的 agents，flag 幂等）+ 领域工具页 Badge 去重显示。
+
+### 新增
+
+- **VM Lab 靶机控制 MCP（攻击效果验证）**：新增 `mcp-servers/vm-lab/`（FastMCP stdio，
+  仿 FOFA 包结构）——10 个工具覆盖 VirtualBox 靶机生命周期（vm_list/start/stop）、
+  快照重置三件套（靶场基线 → 攻击 → 还原）、guest 内取证（vm_exec 查进程/文件/
+  持久化，vm_copyto/copyfrom 投送与回收战果）、VM 画面截图（vm_screenshot）。
+  驱动三形态可插拔：local / win-interop（WSL2→Windows 宿主直调 VBoxManage.exe）/
+  ssh（远程 Linux 宿主）。安全护栏：argv 白名单构造、VM/快照名正则+存在性校验、
+  restore/poweroff 强制 confirm、guest 凭据 `--passwordfile` 临时文件传递、per-VM 串行锁。
+  配套：DB seed（默认禁用，MCP 页启用）、前端预设、`vm-lab-verification` 技能
+  （绑定 vm-lab，worker/pentest 默认可见）、设计文档 `docs/vm-lab-mcp设计.md`。
+- **平台安全增强：MCP 调用纳入三层拦截**（配套修复）：此前模型经 `ExecuteExtraTool`
+  调用 MCP 工具时 guard 只看到外层名（不在 enabled 白名单），MCP 调用**完全绕过
+  deny/judge/ask**。现在 guard 解包 deferred 调用到内层工具名+params 参与规则匹配
+  与审计；`defaultEnabledTools` 增加 `mcp__*` 通配（未存过自定义列表的部署默认生效）。
+  只读类 MCP 无规则命中时行为不变。回归：`guard/mcp_unwrap_test.go`。
+- **vm-lab RCE 视觉证据方法学**：`vm-lab-verification` 技能新增「弹计算器判据」标准
+  流程——四件套证据链（远程触发 HTTP 机械凭据 → vm_screenshot 桌面弹窗 → vm_exec
+  状态取证 → save_evidence 绑定），含会话语义落桌技巧（schtasks /IT）与证据闸门
+  适配说明（截图非机械凭据）；worker 技能路由收录 RCE 验证场景。
+- **前端 artifact 图片内联渲染**：漏洞详情页详细报告、任务报告页、发现列表展开行
+  的 Markdown 现已解析 `![说明](artifact:<id>)`（与 docx 导出同一约定），reporter
+  写进详细报告的现场截图在页面原位显示，不再渲染成破图/字面文本。
+
 ## [0.4.70] - 2026-11-13
 
 > 安装器弱网韧性：apt 逐包兜底 + catalog 预装三轮重试（修 git 缺失导致 script 类安装全面失败）。

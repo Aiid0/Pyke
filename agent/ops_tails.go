@@ -43,6 +43,7 @@ const skillRoutingGuidance = `
 - APK/移动端 → Skill("binary-mobile-reversing")
 - 写报告口径 → Skill("pentest-output-standards")
 - SRC 方法论库（知识库 48 篇按需加载）→ Skill("src-hunting")
+- RCE/提权效果验证（弹窗/桌面证据/guest 取证，仅隔离靶机）→ Skill("vm-lab-verification")
 规则：意图里出现上述场景时，**第一步就加载对应技能**再动手；技能里的命令模板优先于你现编的命令。
 `
 

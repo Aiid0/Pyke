@@ -159,12 +159,31 @@ func (i *Interceptor) SetReviewer(r Reviewer) {
 // rule system when no intercept_enabled_tools setting has been saved.
 // goal_met 一句话终结整个任务且不走 prove_goal 证据链（v0.3.88 体检 S3）——
 // 入集后可被规则命中（内置 judge 规则「goal_met 收官研判」随 V5 seed 落库）。
+//
+// "mcp__*" 是通配记号（见 IsToolEnabled）：MCP 工具（mcp__<server>__<tool>）
+// 默认也进拦截——deferred 调用经 ExecuteExtraTool 中转，guard 解包后用内层名
+// 走这里；不入集的话 MCP 工具对三层闸门完全隐身（v0.4.71 前 的真实缺口）。
 var defaultEnabledTools = []string{
 	"Bash", "WebFetch", "web_search",
 	"shell_open", "shell_send",
 	"listener_start", "listener_stop",
 	"goal_met",
 	"Write", "Edit", "MultiEdit",
+	"mcp__*",
+}
+
+// mcpToolPrefix is the prefix norma uses when registering MCP server tools
+// (mcp__<server>__<tool>). Guard unwraps ExecuteExtraTool calls down to the
+// inner name, then asks IsToolEnabled about it.
+const mcpToolPrefix = "mcp__"
+
+// mcpWildcardToken enables interception for ALL MCP tools when present in the
+// intercept_enabled_tools setting (or in the default set).
+const mcpWildcardToken = "mcp__*"
+
+// IsMCPToolName reports whether name belongs to an MCP server tool.
+func IsMCPToolName(name string) bool {
+	return strings.HasPrefix(name, mcpToolPrefix)
 }
 
 // New creates an Interceptor backed by d. The rule cache is lazy-loaded on
@@ -305,7 +324,7 @@ func (i *Interceptor) rules() ([]compiledRule, error) {
 func (i *Interceptor) IsToolEnabled(name string) bool {
 	i.mu.RLock()
 	if i.enabledTools != nil {
-		v := i.enabledTools[name]
+		v := i.enabledTools[name] || (IsMCPToolName(name) && i.enabledTools[mcpWildcardToken])
 		i.mu.RUnlock()
 		return v
 	}
@@ -316,7 +335,7 @@ func (i *Interceptor) IsToolEnabled(name string) bool {
 	if i.enabledTools == nil {
 		_ = i.loadLocked()
 	}
-	return i.enabledTools[name]
+	return i.enabledTools[name] || (IsMCPToolName(name) && i.enabledTools[mcpWildcardToken])
 }
 
 // GetEnabledTools returns the ordered list of tool names that are currently
