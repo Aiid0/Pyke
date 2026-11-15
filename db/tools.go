@@ -93,6 +93,51 @@ func (d *DB) RemoveAgentFromTool(agentKey, toolKey string) error {
 	return err
 }
 
+// DedupeToolAgents 按「首次出现保序」重写 system 工具的 agents 数组，去掉重复绑定。
+// 修复历史上 seed 合并对 agent key 不去重写出的重复元素（如 diff_responses 的
+// ["mainagent","mainagent",...]——前端按元素作渲染 key，重复即触发 React 告警）。
+// 返回改动的行数。幂等：无重复的行原样跳过。
+func (d *DB) DedupeToolAgents() (int64, error) {
+	rows, err := d.Query(`SELECT key, agents FROM tools WHERE system AND jsonb_typeof(agents)='array'`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	var fixed int64
+	for rows.Next() {
+		var key string
+		var raw []byte
+		if err := rows.Scan(&key, &raw); err != nil {
+			return fixed, err
+		}
+		var agents []string
+		if err := json.Unmarshal(raw, &agents); err != nil {
+			continue // 非 string 数组的行不动
+		}
+		seen := map[string]bool{}
+		out := make([]string, 0, len(agents))
+		for _, a := range agents {
+			if seen[a] {
+				continue
+			}
+			seen[a] = true
+			out = append(out, a)
+		}
+		if len(out) == len(agents) {
+			continue
+		}
+		b, err := json.Marshal(out)
+		if err != nil {
+			return fixed, err
+		}
+		if _, err := d.Exec(`UPDATE tools SET agents=$2::jsonb WHERE key=$1`, key, b); err != nil {
+			return fixed, err
+		}
+		fixed++
+	}
+	return fixed, rows.Err()
+}
+
 // UpsertToolForce overwrites a tool row with the given code-default values (used by
 // the per-tool "reset" action). It resets description/schema/agents and re-enables
 // the tool, but keeps system=true.

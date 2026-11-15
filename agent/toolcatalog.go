@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	actool "github.com/Autumn-27/norma/tool"
 )
@@ -79,7 +80,11 @@ func BuiltinToolSeeds() []ToolSeed {
 				m[t.Name()] = a
 				keys = append(keys, t.Name())
 			}
-			a.agents = append(a.agents, ak)
+			// 同名工具在一个 agent 的清单里出现两次时（历史教训：diff_responses 曾在
+			// MainAgentTools 重复登记）只记一次绑定，否则重复 key 会原样写进 DB。
+			if !slices.Contains(a.agents, ak) {
+				a.agents = append(a.agents, ak)
+			}
 		}
 	}
 

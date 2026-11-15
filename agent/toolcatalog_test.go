@@ -46,6 +46,22 @@ func TestBuiltinToolSeeds(t *testing.T) {
 	}
 }
 
+// TestBuiltinToolSeedsNoDuplicateAgentBindings guards the seed merge: a tool listed
+// twice in one agent's base set (diff_responses was once registered twice in
+// MainAgentTools) must not produce duplicate agent keys — duplicates were written
+// verbatim into tools.agents and tripped the UI's per-element render keys.
+func TestBuiltinToolSeedsNoDuplicateAgentBindings(t *testing.T) {
+	for _, s := range BuiltinToolSeeds() {
+		seen := map[string]bool{}
+		for _, a := range s.Agents {
+			if seen[a] {
+				t.Errorf("tool %s has duplicate agent binding %q (agents=%v)", s.Key, a, s.Agents)
+			}
+			seen[a] = true
+		}
+	}
+}
+
 // TestDecorateToolInjectsDefaults verifies a schema "default" fills a missing param
 // before the underlying handler runs, and an explicitly-provided value is kept.
 func TestDecorateToolInjectsDefaults(t *testing.T) {

@@ -364,7 +364,7 @@ function ToolGridCard({ tool, onClick }: { tool: Tool; onClick: () => void }) {
         {tool.agents.length === 0 && (
           <span className="text-[10px] text-muted-foreground">（未绑定 Agent）</span>
         )}
-        {tool.agents.map((a) => (
+        {[...new Set(tool.agents)].map((a) => (
           <Badge key={a} variant="outline" className="px-1.5 py-0 text-[10px]">
             {a}
           </Badge>

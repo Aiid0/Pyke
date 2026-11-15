@@ -797,7 +797,9 @@ func (t *ToolSet) MainAgentTools() []actool.CoreTool {
 		// auth_request：用资产上已登记的凭据组装带认证的请求（横向/越权验证的前提）。
 		t.authRequest(),
 		t.httpRequest(), t.sessionLogin(),
-		t.diffResponses(), t.diffResponses(),
+		// diff_responses 只登记一次——曾因重复登记 + 种子合并不对 agent 去重，
+		// 把 tools.agents 写成 ["mainagent","mainagent",...]（v0.4.70 前的脏数据教训）。
+		t.diffResponses(),
 		// api_contract：读目标暴露的 API 契约文件，拿到比爬虫更准的接口清单。
 		t.apiContractTool(),
 		// search_recent_critical：按【时间】查最近披露的高危漏洞（不需先知道组件名/CVE 号）。

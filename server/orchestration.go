@@ -513,9 +513,31 @@ func (s *Server) seedOrchestrationTools() {
 	s.upgradeReporterTriggerMessage() // 老库补迁移:让 reporter 回传 evidence_version(一次性)
 	s.seedFindingTrafficTools()       // 增加可选证据参数及只读证据工具，保留用户配置
 	s.seedFindingWorkflowTools()
+	s.dedupeToolAgentBindings() // 修复 seed 合并对 agent key 不去重写出的重复绑定(一次性)
 	// 注：pentest 的默认工具绑定无需迁移——BuiltinToolSeeds 在全新初始化时就把
 	// list_assets/insert_assets/report_finding/list_findings/list_companies 连同
 	// pentest 一起 seed 好了（项目尚无旧库，不做迁移）。
+}
+
+// dedupeToolAgentBindings 修复 seed 合并对 agent key 不去重写出的重复绑定（一次性）。
+// diff_responses 曾在 MainAgentTools 里重复登记，BuiltinToolSeeds 的合并循环只对
+// 工具名去重、对 agent key 原样追加，全新库的 tools.agents 落成
+// ["mainagent","mainagent",...]——「领域工具」页按数组元素作渲染 key，直接触发
+// React 重复 key 告警。按首次出现保序重写全部 system 工具的 agents。
+func (s *Server) dedupeToolAgentBindings() {
+	const flag = "tools_agents_dedupe_v1"
+	if v, _, _ := s.m.pg.GetSetting(flag); v == "true" {
+		return
+	}
+	defer func() { _ = s.m.pg.SetSetting(flag, "true") }() // 无论成功与否只尝试一次
+	fixed, err := s.m.pg.DedupeToolAgents()
+	if err != nil {
+		log.Printf("[tools] agents 绑定去重失败: %v", err)
+		return
+	}
+	if fixed > 0 {
+		log.Printf("[tools] 已去重 %d 个工具的 agents 绑定(一次性)", fixed)
+	}
 }
 
 // refreshBuiltinToolSchemas propagates code schema/description changes on the

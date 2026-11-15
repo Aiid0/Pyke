@@ -25,7 +25,10 @@ func TestWorkerToolListStaysCompact(t *testing.T) {
 	if txt == "" {
 		t.Skip("本机没有可用工具,跳过体积断言")
 	}
-	if len(txt) > 4000 {
+	// v0.4.69 起 catalog 扩到 90 件且 Docker 镜像/预装全量可用（v0.4.68 之前的
+	// 4000 字节阈值是 45 件时代定的，全量体检必然超）。90 件实测约 5.8KB，
+	// 阈值放到 8000 留增长余量，只拦「清单失控膨胀」。
+	if len(txt) > 8000 {
 		t.Errorf("工具清单 %d 字节,太大（每轮都进 system prompt）", len(txt))
 	}
 	// 每行都要带用途
