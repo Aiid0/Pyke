@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-2 -2 52 52">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="g" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+    <linearGradient id="g" x1="170" y1="60" x2="380" y2="420" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#fb923c"/>
       <stop offset=".5" stop-color="#ef4444"/>
       <stop offset="1" stop-color="#be123c"/>
     </linearGradient>
   </defs>
-  <!-- 破军 · 劈星：整星沿 "/" 对角劈开，两半错位成刃口 -->
-  <path fill="url(#g)" d="M26.2 0.8 L31.86 16.14 L47.2 21.8 L31.86 27.46 L29.26 28.56 L19.44 16.54 L20.54 16.14 Z"/>
-  <path fill="url(#g)" d="M21.8 47.2 L16.14 31.86 L0.8 26.2 L19.44 16.54 L31.86 27.46 Z"/>
-  <path fill="#fb923c" d="M33 8 l1.7 4.6 4.6 1.7 -4.6 1.7 -1.7 4.6 -1.7 -4.6 -4.6 -1.7 4.6 -1.7 Z"/>
+  <!-- Pyke · 鱼钩：钩进防线，拖出战果 -->
+  <g transform="translate(-38,38)">
+    <path fill="none" stroke="url(#g)" stroke-width="72" d="M354 40 L354 290 A60 60 0 0 1 234 290 L234 240"/>
+    <path fill="url(#g)" d="M198 262 L198 196 L280 142 L270 196 L270 262 Z"/>
+  </g>
 </svg>
