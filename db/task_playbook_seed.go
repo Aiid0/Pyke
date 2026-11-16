@@ -96,14 +96,79 @@ var builtinTaskPlaybooks = []builtinTaskPlaybook{
 	},
 }
 
-// seedBuiltinTaskPlaybooks 种子内置任务模板（PentestAgent Playbook 思路落地）。
-// settings flag 记批次；插过即跳过——用户后续删除/修改不复活。
+var builtinVulnHuntingPlaybooks = []builtinTaskPlaybook{
+	{
+		name:        "Playbook：SRC / 众测漏洞挖掘",
+		description: "适用：授权 SRC、众测或指定 Web 系统的漏洞挖掘。围绕真实业务功能、接口与权限边界验证安全影响。请补充：授权域名/URL、必测入口、测试账号与角色、允许的验证方式、范围排除项和测试时限。凭据通过任务凭据配置提供。",
+		goal: `对任务描述中给出的授权目标开展漏洞挖掘，产出可复现、可核验证据的漏洞报告。围绕业务功能深入验证，将资产发现作为挖掘的输入。
+
+【内部工作流】
+1. 确认授权范围与测试条件：登记入口、测试角色和范围排除项；缺少登录态时记录受限功能，向用户请求补充。
+2. 建立业务与接口地图：结合浏览器操作、真实流量和前端 JS 识别功能、参数、对象与角色；SPA 入口检查 js_audit，新增资产核对授权归属后入库。
+3. 按功能提出并验证漏洞假设：加载 src-hunting 与 vuln-hunting，优先检查未授权访问、对象级/功能级越权、敏感信息暴露、业务流程与状态约束；结合实际输入点补充注入、文件处理和服务端请求等问题。
+4. 已知组件风险与业务逻辑分别验证：组件情报匹配要核对前置条件；无已知 CVE 的功能继续沿身份、对象、状态和数据流提出假设，用正常请求与异常请求做对照。
+5. 确认发现后及时 report_finding，保留真实请求/响应、复现条件与关联流量；同类问题检查授权范围内的关联功能，合并重复根因。
+6. 汇总已测功能、确认漏洞、排除的候选与受阻项；每个漏洞写清影响、复现、证据和修复建议。证据不足的候选保持待验证，未发现漏洞时如实给出覆盖范围和测试限制。
+
+【边界与验收】
+- 仅测试明确授权的目标，验证采用自有测试账号与最小样本；业务写操作仅针对测试对象，不批量读取无关数据、不影响可用性。
+- 验证使用 vuln-hunting、pentest-verification 的证据要求；版本命中、扫描器告警或响应差异需要进一步核实安全影响。
+- 凭据只使用运行时配置，报告中敏感值脱敏。`,
+	},
+	{
+		name:        "Playbook：API 越权与业务逻辑漏洞挖掘",
+		description: "适用：已有 API、前后端分离系统或移动端后端的权限与业务逻辑专项挖掘。请补充：API 入口、接口文档或样例流量、不同角色的自有测试账号、租户与测试对象、关键业务流程及允许的状态变更。凭据通过任务凭据配置提供。",
+		goal: `对任务描述中授权的 API 与业务流程验证身份、对象、功能和状态边界，产出具有对照证据的漏洞报告。
+
+【内部工作流】
+1. 加载 api-recon、api-security-testing 与 vuln-hunting，结合文档、前端调用和真实流量整理接口与参数，建立角色—租户—对象—操作权限矩阵。
+2. 使用不同角色的自有测试账号建立成功与拒绝的正常基线；缺少账号、租户或测试对象时标记无法覆盖的权限维度。
+3. 对照验证未登录、不同用户、不同角色及不同测试租户的访问结果，检查服务端是否校验对象归属、角色与租户边界；列表、详情、导出和批量接口分别核对。
+4. 沿注册、登录、找回、审批、订单等实际存在的流程验证前置条件、状态转换、参数约束与幂等性；需并发验证时先确认授权，限制为最小规模测试对象。
+5. 用 auth_request 与 diff_responses 辅助对照，结合真实对象归属和业务效果判断安全影响；确认发现后登记并绑定实际流量。
+6. 输出接口覆盖与权限矩阵、确认问题、复现步骤、正常/异常对照证据、修复建议及受限项。未验证的业务效果明确标记，不据错误码或页面差异直接判定漏洞。
+
+【边界与验收】
+- 测试仅使用授权账号、租户和测试数据；资金、消息发送和业务写操作使用沙箱或用户明确允许的测试方式。
+- 不批量读取他人数据、不制造真实业务损失、不执行可用性压力测试；报告中敏感值脱敏。`,
+	},
+	{
+		name:        "Playbook：源码审计与漏洞验证",
+		description: "适用：已获授权源码、仓库或本地项目的白盒漏洞挖掘。请补充：源码路径/仓库、分支或提交、技术栈、重点模块、可用测试环境及审计范围。运行凭据通过任务凭据配置提供。",
+		goal: `对任务描述中授权的源码版本开展安全审计，并在授权测试环境验证可达性与影响，产出定位到代码和修复位置的漏洞报告。
+
+【内部工作流】
+1. 加载 source-code-hunting，记录版本与审计范围，识别框架、路由、认证/授权入口、数据访问和外部依赖；结合 vuln-hunting 分析权限与业务逻辑边界。
+2. 从外部输入追踪至数据库、命令执行、文件读写、模板、反序列化和外部请求等敏感操作，核对过滤、编码、权限检查与异常分支，记录文件与行号。
+3. 检查对象归属、租户隔离、敏感字段修改和业务状态约束；依赖风险核对实际调用、版本与触发条件；配置及历史中的敏感值仅登记位置与脱敏摘要。
+4. 通过本地测试、最小复现或授权测试环境请求验证候选，保留输入、预期/实际结果及调用链证据；缺少环境或前置条件时将结论标为待验证。
+5. 对确认问题登记漏洞并给出根因、受影响版本、代码位置、复现证据和具体修复建议；相同根因的多个位置整理关联范围。
+6. 输出审计覆盖、确认问题、待验证候选、限制与修复优先级；动态验证的 HTTP 问题绑定真实流量，静态推断说明证据边界。
+
+【边界与验收】
+- 审计与验证均限定于授权代码和测试环境；运行项目脚本前核对用途与副作用。
+- 验证仅使用测试数据，不向外部服务传送源码或密钥；扫描器告警需经人工式代码追踪核实，风险等级以证据支持的影响为准。`,
+	},
+}
+
+// Each batch has its own marker so upgrades receive new templates while user
+// edits and deletions in completed batches stay intact.
 func (d *DB) seedBuiltinTaskPlaybooks() error {
-	const flag = "task_playbooks_v1"
-	if v, _, _ := d.GetSetting(flag); v == "done" {
+	if err := d.seedTaskPlaybookBatch("task_playbooks_v1", builtinTaskPlaybooks); err != nil {
+		return err
+	}
+	return d.seedTaskPlaybookBatch("task_playbooks_v2", builtinVulnHuntingPlaybooks)
+}
+
+func (d *DB) seedTaskPlaybookBatch(flag string, playbooks []builtinTaskPlaybook) error {
+	v, _, err := d.GetSetting(flag)
+	if err != nil {
+		return err
+	}
+	if v == "done" {
 		return nil
 	}
-	for _, pb := range builtinTaskPlaybooks {
+	for _, pb := range playbooks {
 		in := TaskTemplateInput{
 			Name:        pb.name,
 			Description: pb.description,
