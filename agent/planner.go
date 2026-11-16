@@ -7,13 +7,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
-	"github.com/Aiid0/Pyke/db"
-	"github.com/Aiid0/Pyke/intercept"
 )
 
 // Planner is the event-driven LLM planner (docs §4.3): each time the asset or
@@ -22,7 +22,7 @@ import (
 // into the frontier. It is the sole intent generator.
 type Planner struct {
 	// intentQueue 返回 (派发阈值, worker 数)；nil = 不限制。
-	intentQueue func() (int, int)
+	intentQueue     func() (int, int)
 	findingRecorder FindingRecorder
 	// 授权边界守卫开关（v0.4.63）：装配时从设置读取，传到 ToolSet。
 	scopeGuard           bool
@@ -484,6 +484,7 @@ func (p *Planner) Plan(ctx context.Context, taskID int64, as *db.AssetStore, ts 
 	taskDir := ensureRunDir(p.workDir, taskID, 0)
 	ctx = intercept.WithReviewContext(ctx, taskDir, intercept.ReviewBackground{})
 	sysBody := plannerSystem(goal, p.workDir, taskDir)
+	sysBody += boundProjectContext(ts, p.workDir, taskID)
 	if p.wantConstraints() {
 		sysBody += constraintBlock(ts) // 操作约束(若有)注入系统提示,框定探索边界
 	}

@@ -21,9 +21,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Autumn-27/norma/llm"
-	actool "github.com/Autumn-27/norma/tool"
-	"github.com/Autumn-27/norma/transcript"
 	"github.com/Aiid0/Pyke/agent"
 	"github.com/Aiid0/Pyke/db"
 	"github.com/Aiid0/Pyke/hostd"
@@ -33,6 +30,9 @@ import (
 	"github.com/Aiid0/Pyke/llmrec"
 	"github.com/Aiid0/Pyke/report"
 	"github.com/Aiid0/Pyke/traffic"
+	"github.com/Autumn-27/norma/llm"
+	actool "github.com/Autumn-27/norma/tool"
+	"github.com/Autumn-27/norma/transcript"
 )
 
 // BuildVersion is the backend application version, injected from cmd/pyke at
@@ -723,6 +723,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/task-categories/{id}", s.pgRenameTaskCategory)
 	mux.HandleFunc("DELETE /api/task-categories/{id}", s.pgDeleteTaskCategory)
 	mux.HandleFunc("POST /api/tasks/category/batch", s.updateTasksCategoryBatch)
+	mux.HandleFunc("GET /api/projects", s.listProjects)
+	mux.HandleFunc("POST /api/projects/import", s.importProject)
 	mux.HandleFunc("GET /api/task-templates", s.pgListTaskTemplates)
 	mux.HandleFunc("POST /api/task-templates", s.pgCreateTaskTemplate)
 	mux.HandleFunc("PATCH /api/task-templates/{id}", s.pgUpdateTaskTemplate)
@@ -1588,6 +1590,7 @@ func truncateReply(s string) string {
 }
 
 type createTaskReq struct {
+	ProjectID            string   `json:"project_id,omitempty"`
 	Name                 string   `json:"name,omitempty"` // 可选任务名称;省略/空=未命名
 	CategoryID           *int64   `json:"category_id,omitempty"`
 	Description          string   `json:"description"`
@@ -1615,6 +1618,19 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(req.Description) == "" {
 		req.Description = "未命名任务"
+	}
+	var project *db.Project
+	if req.ProjectID != "" {
+		var err error
+		project, err = s.m.pg.GetProject(req.ProjectID)
+		if err != nil {
+			writeErr(w, 500, "无法读取项目")
+			return
+		}
+		if project == nil {
+			writeErr(w, 400, "所选项目不存在，请重新导入或选择")
+			return
+		}
 	}
 	if len(req.LLMProfileIDs) == 0 && req.LLMProfileID != nil {
 		req.LLMProfileIDs = []int64{*req.LLMProfileID}
@@ -1663,7 +1679,8 @@ func (s *Server) createTask(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	t, err := s.m.CreateTaskWithOptions(req.Description, req.Goal, db.TaskCreateOptions{
-		Name: strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
+		Project: project,
+		Name:    strings.TrimSpace(req.Name), CategoryID: req.CategoryID,
 		SourceTaskIDs: sourceIDs, CompanyIDs: req.CompanyIDs, LLMProfileIDs: req.LLMProfileIDs,
 		TimeoutSeconds: req.TimeoutSeconds, PlanHeartbeatSeconds: req.PlanHeartbeatSeconds,
 		CoverageEnabled: req.CoverageEnabled,
@@ -3582,8 +3599,8 @@ func (s *Server) settingsPayload() map[string]any {
 		"auto_finish_coverage_pct": af.CoveragePct,
 		"auto_finish_max_rounds":   af.MaxRounds,
 		// 派发节流（v0.4.68）：本轮新增上限阈值；串行前置闸门默认关。
-		"intent_queue_limit":    intentQueueLimitFromPG(s.m.pg),
-		"intent_requires_gate":  intentRequiresGateFromPG(s.m.pg),
+		"intent_queue_limit":   intentQueueLimitFromPG(s.m.pg),
+		"intent_requires_gate": intentRequiresGateFromPG(s.m.pg),
 		// 自主推进（v0.4.68）：默认开关 / 停滞窗口 / deadline 延长上限 / 续杯波次。
 		"autopilot_default":        apc.Default,
 		"autopilot_stall_minutes":  apc.StallMinutes,

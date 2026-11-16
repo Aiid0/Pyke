@@ -49,6 +49,8 @@ import { StatusBadge } from "@/components/status-badge";
 import { TablePagination } from "@/components/table-pagination";
 import { TaskLLMProfileChain } from "@/components/task-llm-profile-chain";
 import { TaskTemplateControls } from "@/components/task-template-controls";
+import { ProjectSourcePicker } from "@/components/project-source-picker";
+import type { ImportedProject } from "@/lib/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -3279,6 +3281,9 @@ function CreateTaskSheet({
   const [description, setDescription] = React.useState("");
   const [goal, setGoal] = React.useState("");
   const [selectedTemplateID, setSelectedTemplateID] = React.useState<number | null>(null);
+  const [project, setProject] = React.useState<ImportedProject | null>(null);
+  const [projectBusy, setProjectBusy] = React.useState(false);
+  const [projectRequired, setProjectRequired] = React.useState(false);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [companies, setCompanies] = React.useState<Company[]>([]);
   const [sourceTaskIDs, setSourceTaskIDs] = React.useState<string[]>([]);
@@ -3341,8 +3346,12 @@ function CreateTaskSheet({
   }
 
   async function createTask() {
-    if (!description.trim() || !goal.trim()) {
-      toast.error("请填写描述与目标");
+    if (projectBusy || (projectRequired && !project)) {
+      toast.error(projectBusy ? "请等待项目导入完成" : "请先导入或选择测试项目");
+      return;
+    }
+    if ((!description.trim() && !project) || !goal.trim()) {
+      toast.error(project ? "请填写测试目标与要求" : "请填写测试对象描述与目标");
       return;
     }
     if (profiles.length === 0) {
@@ -3359,9 +3368,10 @@ function CreateTaskSheet({
       const timeoutSec = Math.max(0, Math.floor(Number(timeoutMin) || 0)) * 60;
       const heartbeatSec = Math.max(10, Math.floor(Number(heartbeatMin) || 10)) * 60; // 下限 10min，与后端归一一致
       await api.createTask({
+        projectId: project?.id,
         name: name.trim(),
         categoryId: categoryID,
-        description: description.trim(),
+        description: description.trim() || `源码审计：${project?.name}`,
         goal: goal.trim(),
         llmProfileIds: llmProfileIDs.map(Number),
         sourceTaskIds: sourceTaskIDs,
@@ -3383,6 +3393,8 @@ function CreateTaskSheet({
       setDescription("");
       setGoal("");
       setSelectedTemplateID(null);
+      setProject(null);
+      setProjectRequired(false);
       setSourceTaskIDs([]);
       setCompanyIDs([]);
       setLLMProfileIDs([]);
@@ -3424,6 +3436,7 @@ function CreateTaskSheet({
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid gap-5">
+            <ProjectSourcePicker value={project} onChange={setProject} onBusyChange={setProjectBusy} onRequiredChange={setProjectRequired} />
             <TaskTemplateControls
               description={description}
               goal={goal}
@@ -3707,7 +3720,7 @@ function CreateTaskSheet({
           <SheetClose asChild>
             <Button variant="outline">取消</Button>
           </SheetClose>
-          <Button onClick={createTask} disabled={creating || uploading}>
+          <Button onClick={createTask} disabled={creating || uploading || projectBusy || (projectRequired && !project)}>
             {creating && <Spinner data-icon="inline-start" />}
             {creating ? "创建中" : "创建"}
           </Button>

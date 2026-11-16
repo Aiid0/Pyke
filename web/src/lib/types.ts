@@ -5,6 +5,8 @@ export type TaskStatus = "created" | "queued" | "running" | "paused" | "done" | 
 export type EngineMode = "exploring" | "paused" | "stalled" | "idle";
 
 export interface Task {
+	project?: ImportedProject;
+	project_directory?: string;
   id: string;
   name?: string; // 可选任务名称;空/缺省=未命名,展示时回退到描述
   category_id?: number;
@@ -42,6 +44,19 @@ export interface Task {
   coverage_enabled?: boolean; // 资产覆盖度功能开关(创建时定,默认开)；false=不计算/不展示覆盖度
   // 任务级登录凭据（脱敏视图；未配置为省略）
   auth_config?: TaskAuthConfigView;
+}
+
+export interface ImportedProject {
+  id: string;
+  name: string;
+  source_type: "git" | "zip" | "directory";
+  repository_url?: string;
+  branch?: string;
+  revision?: string;
+  file_count: number;
+  total_bytes: number;
+  created_at: string;
+  directory?: string;
 }
 
 export interface TaskCategory {

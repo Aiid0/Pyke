@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/hosttools"
+	"github.com/Aiid0/Pyke/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
-	"github.com/Aiid0/Pyke/db"
-	"github.com/Aiid0/Pyke/hosttools"
-	"github.com/Aiid0/Pyke/intercept"
 )
 
 // MainAgent is the thin human-interface orchestrator (docs §4.2 / §7). The human
@@ -161,7 +161,7 @@ func (m *MainAgent) Chat(ctx context.Context, taskID int64, mainSeg int, as *db.
 	// 本任务的工作目录 <workDir>/tasks/<taskID>，先建好。
 	mainDir := ensureRunDir(m.workDir, taskID, 0)
 	ctx = intercept.WithReviewWorkingDirectory(ctx, mainDir)
-	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir), def)
+	system, boundary := deferredSystem(mainAgentSystem(goal, m.workDir, mainDir)+boundProjectContext(ts, m.workDir, taskID), def)
 	opts := agentcore.Options{
 		Provider:        m.prov,
 		SystemPrompt:    system,

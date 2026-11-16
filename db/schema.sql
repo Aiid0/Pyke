@@ -502,6 +502,18 @@ DROP TRIGGER IF EXISTS trg_task_categories_upd ON task_categories;
 CREATE TRIGGER trg_task_categories_upd BEFORE UPDATE ON task_categories
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    source_type TEXT NOT NULL CHECK (source_type IN ('git','zip','directory')),
+    repository_url TEXT NOT NULL DEFAULT '',
+    branch TEXT NOT NULL DEFAULT '',
+    revision TEXT NOT NULL DEFAULT '',
+    file_count INTEGER NOT NULL CHECK (file_count > 0),
+    total_bytes BIGINT NOT NULL CHECK (total_bytes >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS tasks (
     id             BIGSERIAL PRIMARY KEY,
     name           TEXT NOT NULL DEFAULT '',
@@ -635,6 +647,9 @@ CREATE TRIGGER trg_task_archives_upd BEFORE UPDATE ON task_archives
 
 -- Reusable task description/goal presets. nkey is the normalized, case-insensitive
 -- identity used to reject visually equivalent duplicate names.
+-- Source metadata travels with the task row and archive snapshots.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project JSONB;
+
 CREATE TABLE IF NOT EXISTS task_templates (
     id          BIGSERIAL PRIMARY KEY,
     name        TEXT NOT NULL,

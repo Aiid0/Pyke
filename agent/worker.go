@@ -10,15 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/hosttools"
+	"github.com/Aiid0/Pyke/intercept"
 	"github.com/Autumn-27/norma/agentcore"
 	"github.com/Autumn-27/norma/harness"
 	"github.com/Autumn-27/norma/llm"
 	"github.com/Autumn-27/norma/permission"
 	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Autumn-27/norma/transcript"
-	"github.com/Aiid0/Pyke/db"
-	"github.com/Aiid0/Pyke/hosttools"
-	"github.com/Aiid0/Pyke/intercept"
 )
 
 // Worker is an LLM work agent (docs §4.4): it claims ONE intent, completes it
@@ -521,6 +521,7 @@ func (w *Worker) execute(ctx context.Context, name string, taskID int64, as *db.
 	// 启动的重建计算与注入前缀。worker 只需要「别人发现了什么」做去重与联想。
 	overview := renderWorkerGraphOverview(tsx.workerOverviewData())
 	sysBody := workerSystem(w.proxyAddr, w.proxyCACert, w.workDir, runDir)
+	sysBody += boundProjectContext(ts, w.workDir, taskID)
 	if w.wantConstraints() {
 		sysBody += constraintBlock(ts) // 操作约束(若有)注入系统提示,worker 执行时严格遵守
 	}

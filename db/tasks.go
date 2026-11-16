@@ -11,6 +11,7 @@ import (
 
 // Task is a row in the task registry (1:1 with an exploration).
 type Task struct {
+	Project       *Project   `json:"project,omitempty"`
 	ID            int64      `json:"id"`
 	Name          string     `json:"name"` // 可选任务名称;空=未命名
 	CategoryID    *int64     `json:"category_id,omitempty"`
@@ -151,6 +152,10 @@ func (d *DB) CreateTask(description, goal string, llmProfileID *int64, timeoutSe
 // TaskCreateOptions contains the task data that must be committed atomically
 // with the task/exploration row.
 type TaskCreateOptions struct {
+	Project *Project
+	// PrepareProject publishes a pre-copied source directory before commit.
+	// Its rollback removes that directory if the transaction fails.
+	PrepareProject       func(taskID int64) (rollback func(), err error)
 	Name                 string // 可选任务名称;空=未命名
 	CategoryID           *int64
 	SourceTaskIDs        []int64
@@ -183,6 +188,12 @@ func (d *DB) CreateTaskWithOptions(description, goal string, opts TaskCreateOpti
 		return nil, err
 	}
 	defer tx.Rollback()
+	var rollbackProject func()
+	defer func() {
+		if rollbackProject != nil {
+			rollbackProject()
+		}
+	}()
 	var expID int64
 	if err := tx.QueryRow(`INSERT INTO explorations(description, goal) VALUES ($1,$2) RETURNING id`, description, goal).Scan(&expID); err != nil {
 		return nil, err
@@ -225,7 +236,8 @@ VALUES ($1, 'fact', $2, 0, 'origin', 'system')`, expID, string(originPayload)); 
 		active = &id
 	}
 	t := &Task{
-		Name: opts.Name, CategoryID: opts.CategoryID, CategoryName: categoryName,
+		Project: opts.Project,
+		Name:    opts.Name, CategoryID: opts.CategoryID, CategoryName: categoryName,
 		Description: description, Goal: goal, ExplorationID: expID,
 		LLMProfileID: active, ActiveLLMProfileID: active,
 		LLMProfileIDs:  append([]int64(nil), opts.LLMProfileIDs...),
@@ -258,12 +270,31 @@ RETURNING id, status, paused, created_at`, opts.Name, opts.CategoryID, descripti
 	if err := insertTaskInterceptRules(tx, t.ID, opts.InterceptRules); err != nil {
 		return nil, err
 	}
+	if opts.Project != nil {
+		raw, err := json.Marshal(opts.Project)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(`UPDATE tasks SET project=$2 WHERE id=$1`, t.ID, string(raw)); err != nil {
+			return nil, err
+		}
+		if opts.PrepareProject != nil {
+			rollbackProject, err = opts.PrepareProject(t.ID)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	if len(opts.LLMProfileIDs) == 0 {
 		t.LLMFailoverState = "default"
 	} else {
 		t.LLMFailoverState = "ready"
 	}
-	return t, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	rollbackProject = nil
+	return t, nil
 }
 
 func insertTaskCompanies(tx *sql.Tx, taskID int64, companyIDs []int64) error {
@@ -359,13 +390,19 @@ func insertTaskLLMProfiles(tx *sql.Tx, taskID int64, profileIDs []int64) error {
 
 const taskCols = `id, COALESCE(name,''), category_id,
 COALESCE((SELECT category.name FROM task_categories category WHERE category.id=tasks.category_id),''),
-description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(coverage_enabled,true), first_run_at, deadline_at, COALESCE(auth_config::text,'null'), COALESCE(autopilot,false), COALESCE(autopilot_extensions,0)`
+description, goal, exploration_id, status, paused, queued, queued_at, COALESCE(queue_mode,''), llm_profile_id, active_llm_profile_id, COALESCE(parent_ref,''), pinned_at, created_at, completed_at, COALESCE(timeout_seconds,0), COALESCE(plan_heartbeat_seconds,300), COALESCE(coverage_enabled,true), first_run_at, deadline_at, COALESCE(auth_config::text,'null'), COALESCE(autopilot,false), COALESCE(autopilot_extensions,0), project`
 
 func scanTask(sc interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
 	var authRaw string
-	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.CoverageEnabled, &t.FirstRunAt, &t.DeadlineAt, &authRaw, &t.Autopilot, &t.AutopilotExtensions); err != nil {
+	var projectRaw []byte
+	if err := sc.Scan(&t.ID, &t.Name, &t.CategoryID, &t.CategoryName, &t.Description, &t.Goal, &t.ExplorationID, &t.Status, &t.Paused, &t.Queued, &t.QueuedAt, &t.QueueMode, &t.LLMProfileID, &t.ActiveLLMProfileID, &t.ParentRef, &t.PinnedAt, &t.CreatedAt, &t.CompletedAt, &t.TimeoutSeconds, &t.PlanHeartbeatSeconds, &t.CoverageEnabled, &t.FirstRunAt, &t.DeadlineAt, &authRaw, &t.Autopilot, &t.AutopilotExtensions, &projectRaw); err != nil {
 		return nil, err
+	}
+	if len(projectRaw) > 0 {
+		if err := json.Unmarshal(projectRaw, &t.Project); err != nil {
+			return nil, err
+		}
 	}
 	t.AuthConfig = ParseTaskAuth([]byte(authRaw))
 	t.Pinned = t.PinnedAt != nil

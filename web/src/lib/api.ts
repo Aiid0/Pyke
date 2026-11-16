@@ -4,6 +4,7 @@
 // are passed through and formatted at the call site.
 
 import type { ChatMention } from "@/lib/chat-mentions";
+import type { ImportedProject } from "@/lib/types";
 import { MOCK } from "@/lib/mock/enabled";
 import type {
   ActiveFindingRetest,
@@ -300,6 +301,7 @@ export const api = {
     get<{ tasks: Task[]; active: string }>("/tasks").then((r) => ({ tasks: arr(r.tasks), active: r.active ?? "" })),
   task: (id: string) => get<Task>(`/tasks/${encodeURIComponent(id)}`),
   createTask: (input: {
+    projectId?: string;
     name?: string;
     categoryId?: number;
     description: string;
@@ -315,6 +317,7 @@ export const api = {
     authConfig?: TaskAuthConfigInput;
   }) =>
     post<Task>("/tasks", {
+      project_id: input.projectId,
       name: input.name ?? "",
       category_id: input.categoryId ?? null,
       description: input.description,
@@ -345,6 +348,28 @@ export const api = {
       task_ids: taskIds,
       category_id: categoryId ?? null,
     }),
+  projects: () => get<{ projects: ImportedProject[] }>("/projects").then((r) => arr(r.projects)),
+  importGitProject: (input: { name: string; repository_url: string; branch: string; username?: string; token?: string }) =>
+    post<ImportedProject>("/projects/import", input),
+  uploadProject: async (files: File[], sourceType: "zip" | "directory", name: string) => {
+    const data = new FormData();
+    data.append("name", name);
+    data.append("source_type", sourceType);
+    for (const file of files) {
+      data.append("file", file);
+      data.append("path", file.webkitRelativePath || file.name);
+    }
+    const token = getToken();
+    const response = await fetch("/api/projects/import", {
+      method: "POST", body: data,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `项目上传失败 (${response.status})`);
+    }
+    return response.json() as Promise<ImportedProject>;
+  },
   taskTemplates: () => get<{ templates: TaskTemplate[] }>("/task-templates").then((r) => arr(r.templates)),
   createTaskTemplate: (
     input: Pick<TaskTemplate, "name" | "description" | "goal" | "category_id" | "intercept_rules">,

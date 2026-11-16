@@ -132,7 +132,7 @@ func TestTaskArchiveDatabaseRoundTrip(t *testing.T) {
 	if err := d.EnsureLLMUsageTable(); err != nil {
 		t.Fatal(err)
 	}
-	task, err := d.CreateTaskWithOptions("archive database roundtrip", "restore exact graph", TaskCreateOptions{Name: "cold task"})
+	task, err := d.CreateTaskWithOptions("archive database roundtrip", "restore exact graph", TaskCreateOptions{Name: "cold task", Project: &Project{ID: "archived-project", Name: "archived source", SourceType: "git", Revision: "test-revision", FileCount: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,6 +284,9 @@ VALUES($1,$2,0,'quota_exhausted','balance exhausted',$3,$4,$3)`, task.ID, llmPro
 	}
 	if live.Name != "cold task" || !live.Paused {
 		t.Fatalf("restored task metadata mismatch: %+v", live)
+	}
+	if live.Project == nil || live.Project.ID != "archived-project" || live.Project.Revision != "test-revision" {
+		t.Fatalf("archive lost project binding: %+v", live.Project)
 	}
 	if err := d.QueryRow(`SELECT count(*) FROM exploration_nodes WHERE exploration_id=$1`, task.ExplorationID).Scan(&nodes); err != nil {
 		t.Fatal(err)

@@ -1300,6 +1300,8 @@ function route(m: string, path: string, seg: string[], q: URLSearchParams, b: Re
     task.category_name = category?.name;
     return task;
   }
+  if (path === "/projects" && m === "GET") return { projects: [] };
+  if (path === "/projects/import" && m === "POST") throw new Error("项目导入需要连接 Pyke 后端");
   if (path === "/task-templates" && m === "GET") return { templates: mockTaskTemplates };
   if (path === "/task-templates" && m === "POST") {
     const now = new Date().toISOString();

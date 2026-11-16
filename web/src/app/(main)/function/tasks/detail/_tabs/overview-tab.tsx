@@ -443,6 +443,18 @@ export function OverviewTab({ taskId }: { taskId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {task?.project && <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base"><TargetIcon className="size-4 text-primary" />测试项目：{task.project.name}</CardTitle>
+          <CardDescription>{task.project.source_type === "git" ? "Git 仓库" : task.project.source_type === "zip" ? "ZIP 上传" : "本地文件夹上传"} · {task.project.file_count} 个文件</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2 text-sm">
+          <p>源码目录：<code className="break-all">{task.project_directory}</code></p>
+          {task.project.repository_url && <p className="break-all">仓库：{task.project.repository_url}</p>}
+          {task.project.branch && <p>分支：{task.project.branch} · 提交：<code className="break-all">{task.project.revision}</code></p>}
+          <p className="text-muted-foreground text-xs">当前任务使用独立源码快照，重置会话、继续执行和归档恢复均保留项目绑定。</p>
+        </CardContent>
+      </Card>}
       {/* 原始任务描述与目标(创建时填写的),置顶便于随时回看。 */}
       <Card>
         <CardHeader>

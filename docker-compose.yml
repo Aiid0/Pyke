@@ -27,6 +27,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    extra_hosts:
+      # 容器通过此别名访问本机代理等宿主服务（兼容 Linux Docker）。
+      - "host.docker.internal:host-gateway"
     environment:
       # v0.5.0 更名说明：PG 角色/库名默认 pyke；存量部署（仍是 pojun）用 .env 固定 POSTGRES_USER/POSTGRES_DB 或按 CHANGELOG 执行改名
       PYKE_PG_DSN: postgres://${POSTGRES_USER:-pyke}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-pyke}?sslmode=disable

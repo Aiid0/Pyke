@@ -17,10 +17,12 @@ func TestTaskArchivePackageFilesRoundTrip(t *testing.T) {
 	taskID := "42"
 	explorationID := int64(73)
 	taskFile := filepath.Join(dataDir, "tasks", taskID, "uploads", "evidence.txt")
+	sourceFile := filepath.Join(dataDir, "tasks", taskID, "source", "lib", "main.go")
 	transcriptFile := filepath.Join(dataDir, "transcripts", "exp73-worker-1.jsonl")
 	unrelatedTranscript := filepath.Join(dataDir, "transcripts", "exp74-worker-1.jsonl")
 	for path, body := range map[string]string{
 		taskFile:            "task evidence",
+		sourceFile:          "package main",
 		transcriptFile:      "transcript",
 		unrelatedTranscript: "leave me hot",
 	} {
@@ -83,7 +85,7 @@ func TestTaskArchivePackageFilesRoundTrip(t *testing.T) {
 	if err := installed.commit(); err != nil {
 		t.Fatal(err)
 	}
-	for path, want := range map[string]string{taskFile: "task evidence", transcriptFile: "transcript"} {
+	for path, want := range map[string]string{taskFile: "task evidence", transcriptFile: "transcript", sourceFile: "package main"} {
 		got, err := os.ReadFile(path)
 		if err != nil || string(got) != want {
 			t.Fatalf("restored %s = %q, %v; want %q", path, got, err, want)

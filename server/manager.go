@@ -16,7 +16,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Aiid0/Pyke/agent"
 	pgdb "github.com/Aiid0/Pyke/db"
 	"github.com/Aiid0/Pyke/enrich"
@@ -24,24 +23,27 @@ import (
 	"github.com/Aiid0/Pyke/intercept"
 	"github.com/Aiid0/Pyke/traffic"
 	"github.com/Aiid0/Pyke/vulnintel"
+	actool "github.com/Autumn-27/norma/tool"
 )
 
 // Task is one engagement: a description + goal + its own exploration store,
 // sharing the process-wide asset store. ID is the PG task id as a string; ExpID
 // is the exploration the task owns.
 type Task struct {
-	ID           string `json:"id"`
-	ExpID        int64  `json:"exploration_id"`
-	Name         string `json:"name"` // 可选任务名称;空=未命名
-	CategoryID   *int64 `json:"category_id,omitempty"`
-	CategoryName string `json:"category_name,omitempty"`
-	PinnedAt     int64  `json:"pinned_at,omitempty"`
-	Description  string `json:"description"`
-	Goal         string `json:"goal"`
-	CreatedAt    int64  `json:"created_at"`
-	CompletedAt  int64  `json:"completed_at,omitempty"` // 进入终态的 unix 秒;0=未完成
-	Paused       bool   `json:"paused"`
-	Queued       bool   `json:"queued"` // 因并发上限被挂起、等待空位自动启动;true=尚未开跑
+	Project          *pgdb.Project `json:"project,omitempty"`
+	ProjectDirectory string        `json:"project_directory,omitempty"`
+	ID               string        `json:"id"`
+	ExpID            int64         `json:"exploration_id"`
+	Name             string        `json:"name"` // 可选任务名称;空=未命名
+	CategoryID       *int64        `json:"category_id,omitempty"`
+	CategoryName     string        `json:"category_name,omitempty"`
+	PinnedAt         int64         `json:"pinned_at,omitempty"`
+	Description      string        `json:"description"`
+	Goal             string        `json:"goal"`
+	CreatedAt        int64         `json:"created_at"`
+	CompletedAt      int64         `json:"completed_at,omitempty"` // 进入终态的 unix 秒;0=未完成
+	Paused           bool          `json:"paused"`
+	Queued           bool          `json:"queued"` // 因并发上限被挂起、等待空位自动启动;true=尚未开跑
 	// QueuedAt is an internal Unix-nanosecond ordering key. It is deliberately
 	// finer than CreatedAt so several tasks enqueued in the same second retain
 	// their real FIFO order.
@@ -1167,9 +1169,10 @@ func unixNanoOrZero(t *time.Time) int64 {
 	return t.UnixNano()
 }
 
-func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Interceptor) *Task {
+func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Interceptor, dataDir string) *Task {
 	t := &Task{
-		ID: strconv.FormatInt(pt.ID, 10), ExpID: pt.ExplorationID,
+		Project: pt.Project,
+		ID:      strconv.FormatInt(pt.ID, 10), ExpID: pt.ExplorationID,
 		Name:       pt.Name,
 		CategoryID: cloneInt64Ptr(pt.CategoryID), CategoryName: pt.CategoryName,
 		PinnedAt:    unixOrZero(pt.PinnedAt),
@@ -1188,6 +1191,9 @@ func taskFromPG(pt *pgdb.Task, store *pgdb.ExplorationStore, ic *intercept.Inter
 		Store: store, Guard: guard.NewWithInterceptor(ic), notify: make(chan struct{}, 1),
 	}
 	t.autopilot.Store(pt.Autopilot)
+	if pt.Project != nil {
+		t.ProjectDirectory = filepath.Join(dataDir, "tasks", t.ID, "source")
+	}
 	return t
 }
 
@@ -1230,6 +1236,11 @@ func (m *Manager) CreateTask(description, goal string, llmProfileID *int64, time
 }
 
 func (m *Manager) CreateTaskWithOptions(description, goal string, opts pgdb.TaskCreateOptions) (*Task, error) {
+	cleanup, err := m.prepareProjectSnapshot(&opts)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
 	if len(opts.CompanyIDs) > 0 {
 		m.companyMu.Lock()
 		defer m.companyMu.Unlock()
@@ -1238,7 +1249,7 @@ func (m *Manager) CreateTaskWithOptions(description, goal string, opts pgdb.Task
 	if err != nil {
 		return nil, err
 	}
-	t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+	t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor, m.dir)
 	m.mu.Lock()
 	m.tasks[t.ID] = t
 	m.active = t.ID
@@ -1437,7 +1448,7 @@ func (m *Manager) LoadExisting() []*Task {
 		if _, ok := m.tasks[id]; ok {
 			continue
 		}
-		t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor)
+		t := taskFromPG(pt, m.pg.Exploration(pt.ExplorationID), m.interceptor, m.dir)
 		m.tasks[id] = t
 		loaded = append(loaded, t)
 	}

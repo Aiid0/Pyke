@@ -467,6 +467,9 @@ function TaskDetailInner() {
           <span className="inline-flex">{archiveTrigger}</span>
         </div>
         <p className="line-clamp-2 text-muted-foreground text-xs sm:truncate">{task.goal}</p>
+        {task.project && <p className="truncate text-muted-foreground text-xs" title={task.project_directory}>
+          测试项目：{task.project.name} · <code>{task.project_directory}</code>
+        </p>}
         {/* Tabs */}
         <div className="no-scrollbar min-w-0 overflow-x-auto max-sm:[mask-image:linear-gradient(to_right,#000_88%,transparent)]">
           <TabsList variant="default" className="min-w-max">

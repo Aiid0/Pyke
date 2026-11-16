@@ -30,6 +30,8 @@ func rawString(raw json.RawMessage) string {
 
 // ---- Task (frontend "Task") ---- created_at as RFC3339, plus a derived status.
 type TaskDTO struct {
+	Project            *db.Project        `json:"project,omitempty"`
+	ProjectDirectory   string             `json:"project_directory,omitempty"`
 	ID                 string             `json:"id"`
 	ExplorationID      int64              `json:"exploration_id"`
 	Name               string             `json:"name"` // 可选任务名称;空=未命名
@@ -110,6 +112,8 @@ func taskDTO(t *Task, status string) TaskDTO {
 	}
 	profileIDs := append(make([]int64, 0, len(llmState.ProfileIDs)), llmState.ProfileIDs...)
 	return TaskDTO{
+		Project:            t.Project,
+		ProjectDirectory:   t.ProjectDirectory,
 		ID:                 t.ID,
 		ExplorationID:      t.ExpID,
 		Name:               lifecycle.Name,
@@ -196,15 +200,15 @@ type TaskNodeDTO struct {
 
 func taskNodeDTO(n *db.Node) TaskNodeDTO {
 	d := TaskNodeDTO{
-		ID:           i64s(n.ID),
-		Type:         n.Kind,
-		Payload:      rawString(n.Payload),
-		DeleteReason: n.DeleteReason,
+		ID:            i64s(n.ID),
+		Type:          n.Kind,
+		Payload:       rawString(n.Payload),
+		DeleteReason:  n.DeleteReason,
 		BlockedReason: n.BlockedReason,
-		Priority:     n.Priority,
-		State:        n.State,
-		Origin:       n.Origin,
-		TS:           rfc3339(n.CreatedAt),
+		Priority:      n.Priority,
+		State:         n.State,
+		Origin:        n.Origin,
+		TS:            rfc3339(n.CreatedAt),
 	}
 	if n.SourceTaskID > 0 {
 		d.SourceTaskID = i64s(n.SourceTaskID)
@@ -243,8 +247,8 @@ func goalDTO(n *db.Node) GoalDTO {
 		Unverified:       p.Unverified,
 		UnverifiedReason: p.UnverifiedReason,
 		State:            n.State,
-		Origin:    n.Origin,
-		TS:        rfc3339(n.CreatedAt),
+		Origin:           n.Origin,
+		TS:               rfc3339(n.CreatedAt),
 	}
 }
 

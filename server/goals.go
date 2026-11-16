@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -429,7 +430,8 @@ func (s *Server) createGoals(ctx context.Context, t *Task, emit func(db.Activity
 	taskID, _ := strconv.ParseInt(t.ID, 10, 64)
 	s.engine.BeginLLMCall(t.ID)
 	goalRuntime := s.agentsForTask(t).runtime
-	decomposed := agent.DecomposeGoalsWithProvider(ctx, goalRuntime, s.m.dir, t.Goal, t.Description, as, t.Store, taskID, goalRuntime.nonStreaming(), goalRuntime.maxTokens(), emit)
+	projectContext := agent.ProjectContext(t.Project, t.ProjectDirectory, filepath.Join(s.m.dir, "tasks", t.ID))
+	decomposed := agent.DecomposeGoalsWithProvider(ctx, goalRuntime, s.m.dir, t.Goal, t.Description+projectContext, as, t.Store, taskID, goalRuntime.nonStreaming(), goalRuntime.maxTokens(), emit)
 	s.engine.EndLLMCall(t.ID)
 	for _, g := range decomposed {
 		if strings.TrimSpace(g.Text) != "" {
