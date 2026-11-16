@@ -10,7 +10,6 @@ import {
   FolderSync,
   LayoutDashboard,
   type LucideIcon,
-  MessageSquare,
   Network,
   MonitorCog,
   Plug,
@@ -70,7 +69,6 @@ export const sidebarItems: NavGroup[] = [
     label: "功能",
     items: [
       { id: "dashboard", title: "仪表盘", url: "/dashboard", icon: LayoutDashboard },
-      { id: "chat", title: "对话", url: "/chat", icon: MessageSquare },
       { id: "tasks", title: "任务", url: "/function/tasks", icon: Target },
       { id: "findings", title: "发现", url: "/function/findings", icon: Bug },
       { id: "traffic", title: "流量", url: "/function/traffic", icon: Activity },

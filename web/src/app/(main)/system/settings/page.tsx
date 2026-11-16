@@ -1048,7 +1048,7 @@ export default function SystemSettingsPage() {
               会话输入框发送键位
             </CardTitle>
             <CardDescription>
-              对话页与任务详情的主 Agent 会话输入框共用此设置，选择后立即生效、无需保存。
+              主 Agent 会话输入框使用此设置，选择后立即生效、无需保存。
               <br />
               该偏好<b>只存在本浏览器</b>，不随账号同步，换浏览器或清理站点数据后需重新设置。
             </CardDescription>

@@ -2,7 +2,11 @@
 
 import * as React from "react";
 
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+
 import {
+  ArrowLeftIcon,
   ArrowUpIcon,
   Bot,
   ChevronDownIcon,
@@ -14,7 +18,6 @@ import {
   PencilIcon,
   PinIcon,
   PinOffIcon,
-  PlusIcon,
   Square,
   Trash2Icon,
   XIcon,
@@ -142,8 +145,7 @@ function LiveBadge() {
   );
 }
 
-// Composer is the shared bottom input (textarea grows to a cap, Enter sends,
-// Shift+Enter newlines) — the same affordance across DraftChat and ChatView.
+// Composer grows to a cap; Enter sends and Shift+Enter inserts a newline.
 function Composer({
   value,
   onChange,
@@ -360,120 +362,6 @@ function LLMProfileRow({
   );
 }
 
-// DraftChat is the default right-pane view: a fresh chat (agent picker in the
-// header, centered empty state, composer) with NO conversation created yet. The
-// conversation is created lazily on the first send (ChatGPT-style), then the
-// parent switches to the real ChatView.
-function DraftChat({
-  agents,
-  profiles,
-  onStarted,
-}: {
-  agents: Agent[];
-  profiles: LLMProfile[];
-  onStarted: (c: Conversation, pending?: { input?: string; attachments?: ChatAttachment[] }) => void;
-}) {
-  const [agentKey, setAgentKey] = React.useState("");
-  const [llmProfileId, setLlmProfileId] = React.useState<number | null>(null);
-  const [input, setInput] = React.useState("");
-  const [sending, setSending] = React.useState(false);
-  const [uploading, setUploading] = React.useState(false);
-
-  // default the agent to Auto once agents load.
-  React.useEffect(() => {
-    if (!agentKey && agents.some((a) => a.key === "auto")) setAgentKey("auto");
-  }, [agentKey, agents]);
-
-  const agent = agents.find((a) => a.key === agentKey);
-
-  async function send() {
-    const msg = input.trim();
-    if (!msg || !agentKey || sending) return;
-    setSending(true);
-    try {
-      const c = await api.createConversation(agentKey, "", llmProfileId);
-      await api.sendConversationMessage(c.id, msg);
-      onStarted(c);
-    } catch (e) {
-      toast.error(`发送失败：${(e as Error).message}`);
-      setSending(false);
-    }
-  }
-
-  // Attachments need a conversation to own the uploads dir (sessions/conv-<id>/),
-  // and a draft has none yet — so picking a file CREATES the conversation, uploads
-  // into it, then hands off to ChatView carrying the typed text + attachments (the
-  // user sends from there). Mirrors the task main-agent console's upload, adapted to
-  // the ChatGPT-style lazy-create flow.
-  async function pickFiles(files: File[]) {
-    if (files.length === 0 || !agentKey || uploading || sending) return;
-    setUploading(true);
-    try {
-      const c = await api.createConversation(agentKey, "", llmProfileId);
-      const r = await api.chatUpload("session", `conv-${c.id}`, files);
-      onStarted(c, { input, attachments: r.attachments });
-    } catch (e) {
-      toast.error(`上传失败：${(e as Error).message}`);
-      setUploading(false);
-    }
-  }
-
-  const agentPicker = (
-    <Select value={agentKey} onValueChange={setAgentKey}>
-      <SelectTrigger className="w-full sm:w-40">
-        <SelectValue placeholder="选择 Agent…" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectGroup>
-          {agents.map((a) => (
-            <SelectItem key={a.key} value={a.key}>
-              <span className="flex items-center gap-2">
-                <Bot className="size-3.5" />
-                {a.name}
-                {!a.builtin && (
-                  <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                    自定义
-                  </Badge>
-                )}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
-  );
-
-  return (
-    <>
-      {/* empty / landing state fills the panel */}
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
-        <div className="flex size-12 items-center justify-center rounded-full bg-primary/10">
-          <Bot className="size-6 text-primary" />
-        </div>
-        <div className="font-medium text-sm">开始和「{agent?.name ?? "Agent"}」对话</div>
-        {agent?.description && <p className="max-w-md text-muted-foreground text-xs">{agent.description}</p>}
-      </div>
-
-      <Composer
-        value={input}
-        onChange={setInput}
-        onSend={send}
-        disabled={sending || uploading || !agentKey}
-        placeholder="输入消息，@ 引用记录，Enter 发送"
-        leftSlot={agentPicker}
-        onPickFiles={pickFiles}
-        uploading={uploading}
-      />
-      <LLMProfileRow
-        profiles={profiles}
-        selected={llmProfileId}
-        onChange={setLlmProfileId}
-        disabled={sending || uploading}
-      />
-    </>
-  );
-}
-
 // ChatView is the right pane for one conversation — mirrors the task detail's
 // main-agent console: header with agent + live badge + token/duration meta, a
 // scroll-stick transcript (chat mode), and the composer.
@@ -481,27 +369,23 @@ function ChatView({
   conv,
   agents,
   profiles,
-  initial,
   onTitleMaybeChanged,
   onConvUpdated,
 }: {
   conv: Conversation;
   agents: Agent[];
   profiles: LLMProfile[];
-  // pending text + already-uploaded attachments handed off from a draft that
-  // created this conversation via the paperclip (consumed once, on mount).
-  initial?: { input?: string; attachments?: ChatAttachment[] };
   onTitleMaybeChanged: () => void;
   onConvUpdated: () => void;
 }) {
   const approvalFocus = useApprovalFocus({ conversationId: conv.id });
   const [messages, setMessages] = React.useState<Activity[]>([]);
   const [running, setRunning] = React.useState(false);
-  const [input, setInput] = React.useState(initial?.input ?? "");
+  const [input, setInput] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [stopping, setStopping] = React.useState(false);
   // 方式1 文件上传:已上传的附件(落到 sessions/conv-<id>/uploads/),随下条消息一起发。
-  const [attachments, setAttachments] = React.useState<ChatAttachment[]>(initial?.attachments ?? []);
+  const [attachments, setAttachments] = React.useState<ChatAttachment[]>([]);
   const [uploading, setUploading] = React.useState(false);
   const cursorRef = React.useRef(0); // newest loaded id — incremental-tail anchor
   const earliestRef = React.useRef(0); // earliest loaded id — reverse-pagination anchor
@@ -1043,18 +927,44 @@ function AgentGroupHeader({
 }
 
 export default function ChatPage() {
+  return (
+    <React.Suspense fallback={<ConversationLoading />}>
+      <ConversationRoute />
+    </React.Suspense>
+  );
+}
+
+function ConversationLoading() {
+  return <div role="status" className="p-6 text-muted-foreground text-sm">正在加载会话入口…</div>;
+}
+
+function ConversationRoute() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const conversationId = Number(searchParams.get("c"));
+  const hasConversation = Number.isSafeInteger(conversationId) && conversationId > 0;
+
+  React.useEffect(() => {
+    if (!hasConversation) router.replace("/function/tasks");
+  }, [hasConversation, router]);
+
+  // Existing transcript links are used by retests and approval records.
+  if (!hasConversation) return <ConversationLoading />;
+  return <ConversationPage initialConversationId={conversationId} />;
+}
+
+function ConversationPage({ initialConversationId }: { initialConversationId: number }) {
   const [agents, setAgents] = React.useState<Agent[]>([]);
   const [profiles, setProfiles] = React.useState<LLMProfile[]>([]);
   const [convs, setConvs] = React.useState<Conversation[]>([]);
   const [agentFilter, setAgentFilter] = React.useState<string | null>(null);
-  const [selectedId, setSelectedId] = React.useState<number | null>(null);
-  const [sourceRequested, setSourceRequested] = React.useState(false);
+  const [selectedId, setSelectedId] = React.useState<number | null>(initialConversationId);
   const [convsLoaded, setConvsLoaded] = React.useState(false);
-  const selectConversation = React.useCallback((id: number | null) => {
+  const selectConversation = React.useCallback((id: number) => {
     if (id !== selectedId) {
       const url = new URL(window.location.href);
       url.searchParams.delete("approval");
-      setSourceRequested(false);
+      url.searchParams.set("c", String(id));
       window.history.replaceState(null, "", url);
     }
     setSelectedId(id);
@@ -1073,13 +983,6 @@ export default function ChatPage() {
   // Collapsed agent groups. Hydrated from localStorage after mount (not a lazy
   // useState init) so the server and client render the same first pass.
   const [collapsedAgents, setCollapsedAgents] = React.useState<Set<string>>(() => new Set());
-  // Pending text + uploaded attachments handed off from a draft that created a
-  // conversation via the paperclip, keyed by the new conversation id (consumed once
-  // by ChatView on mount; ids never repeat, so leftover entries are harmless).
-  const [pendingByConv, setPendingByConv] = React.useState<
-    Record<number, { input?: string; attachments?: ChatAttachment[] }>
-  >({});
-
   const conversationListSeq = React.useRef(0);
   const reloadConvs = React.useCallback(async () => {
     const seq = ++conversationListSeq.current;
@@ -1152,26 +1055,9 @@ export default function ChatPage() {
     });
   }, []);
 
-  // Restore the open conversation from the URL (?c=<id>) on mount, so a refresh
-  // returns to the same thread instead of the empty draft view. Runs after
-  // hydration (not a lazy useState init) to avoid a server/client mismatch.
   React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setSourceRequested(params.has("approval"));
-    const c = params.get("c");
-    const id = c ? Number(c) : NaN;
-    if (Number.isFinite(id)) setSelectedId(id);
-  }, []);
-  // Mirror the current selection into the URL (replaceState → no history spam). A
-  // selectedId with no matching conversation (e.g. a stale ?c=, or a just-created
-  // one before reloadConvs lands) simply renders the draft view — harmless — so we
-  // deliberately do NOT auto-clear it here (that raced new-conversation creation).
-  React.useEffect(() => {
-    const url = new URL(window.location.href);
-    if (selectedId != null) url.searchParams.set("c", String(selectedId));
-    else url.searchParams.delete("c");
-    window.history.replaceState(null, "", url);
-  }, [selectedId]);
+    setSelectedId(initialConversationId);
+  }, [initialConversationId]);
 
   const selected = React.useMemo(() => convs.find((c) => c.id === selectedId) ?? null, [convs, selectedId]);
   const agentByKey = React.useMemo(() => new Map(agents.map((agent) => [agent.key, agent])), [agents]);
@@ -1285,7 +1171,7 @@ export default function ChatPage() {
           else failed.push({ id: item.id, error: item.error ?? "对话不存在" });
         }
       }
-      if (deleted.has(selectedId ?? -1)) selectConversation(null);
+      if (deleted.has(selectedId ?? -1)) setSelectedId(null);
       setSelectedConversationIds((current) => {
         const next = new Set(current);
         for (const id of deleted) next.delete(id);
@@ -1354,8 +1240,8 @@ export default function ChatPage() {
         {/* left: conversation list */}
         <div className="flex flex-col overflow-hidden rounded-lg border bg-card">
           <div className="flex flex-col gap-2 border-b p-2">
-            <Button size="sm" className="w-full" onClick={() => selectConversation(null)}>
-              <PlusIcon /> 新建对话
+            <Button size="sm" className="w-full" asChild>
+              <Link href="/function/tasks"><ArrowLeftIcon /> 返回任务</Link>
             </Button>
             <Select
               value={agentFilter === null ? "all" : `agent:${agentFilter}`}
@@ -1511,34 +1397,13 @@ export default function ChatPage() {
               conv={selected}
               agents={agents}
               profiles={profiles}
-              initial={pendingByConv[selected.id]}
               onTitleMaybeChanged={reloadConvs}
               onConvUpdated={reloadConvs}
             />
-          ) : sourceRequested ? (
-            <div role="status" className="p-6 text-muted-foreground text-sm">
-              {convsLoaded ? "对话已被删除" : "正在加载对应对话…"}
-            </div>
           ) : (
-            <DraftChat
-              agents={chatAgents}
-              profiles={profiles}
-              onStarted={(c, pending) => {
-                if (agentFilter !== null && agentFilter !== c.agent_key) changeAgentFilter(null);
-                // Insert the new conversation immediately so `selected` resolves to
-                // it on this render (switching to ChatView right away, before the
-                // async reloadConvs lands); reloadConvs then reconciles titles etc.
-                if (pending) setPendingByConv((p) => ({ ...p, [c.id]: pending }));
-                setConvs((prev) => {
-                  if (prev.some((item) => item.id === c.id)) return prev;
-                  const firstUnpinned = prev.findIndex((item) => !conversationIsPinned(item));
-                  const insertAt = firstUnpinned < 0 ? prev.length : firstUnpinned;
-                  return [...prev.slice(0, insertAt), c, ...prev.slice(insertAt)];
-                });
-                setSelectedId(c.id);
-                void reloadConvs();
-              }}
-            />
+            <div role="status" className="p-6 text-muted-foreground text-sm">
+              {convsLoaded ? "会话已被删除，请返回任务查看。" : "正在加载对应会话…"}
+            </div>
           )}
         </div>
       </div>
