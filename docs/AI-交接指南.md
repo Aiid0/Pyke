@@ -48,7 +48,8 @@
 | http_probe / auth_request / diff_responses / api_contract | `agent/tools_probe.go` 等 | 模式统一：**只落脚本+组命令，不自己发请求**——流量照常过 MITM 留证、审批照常生效。新领域工具照这个模式写 |
 | 漏洞情报 | `vulnintel/`、`agent/tools_vulnintel.go`（search_vulns/get_vuln/get_poc/scan_with_nuclei） | NVD+KEV+GHSA+PoC 同步；版本区间三态判定；「版本匹配≠漏洞」 |
 | 拦截三层闸门 | `intercept/`、`guard/`、`db/intercept_builtin_rules.go` | deny/judge/ask；规则分批种子（settings flag 记批次，用户删改不复活） |
-| 任务 Playbook | `db/task_playbook_seed.go` | 4 个内置模板（Web 全流程/内网域/APP+API/纯侦察）；settings flag `task_playbooks_v1` |
+| 任务 Playbook | `db/task_playbook_seed.go` | 7 个内置模板：v1 为 Web 全流程/内网域/APP+API/纯侦察，v2 为 SRC 众测挖掘/API 越权与逻辑/源码审计验证；settings flag `task_playbooks_v1`、`task_playbooks_v2` 分批记录，保留用户删改 |
+| 源码项目导入与绑定 | `projectsource/`、`server/projects.go`、`db/projects.go`、`agent/project.go` | Git HTTP(S)/ZIP/目录上传 → `data/projects/<uuid>/source`；建任务预复制、事务内发布 `tasks/<id>/source`，`tasks.project` JSONB 随归档保存；三类 Agent 每次运行注入绑定。令牌仅用于 Git 进程环境，禁止进入 URL、日志与配置。当前固定目录不构成文件系统沙箱 |
 | Word 报告 | `report/`（手写 OOXML 零依赖）、`report/fonts/` 公文字体 | 字体内嵌 odttf；docx→PDF 渲染验证配方见记忆「docx 渲染验证配方」 |
 | 前端 | `web/src/`（Next.js 静态导出），构建 `NEXT_EXPORT=1 npx next build` → 拷 `web/out` → `server/webui/dist` | 图片缩放 ZoomableImageDialog；数据查看器 ArtifactDataViewerDialog；MCP 预设在 system/mcp/page.tsx |
 
