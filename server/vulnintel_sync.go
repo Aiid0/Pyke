@@ -34,6 +34,25 @@ const (
 // errVulnSyncRunning 表示已有一轮同步在跑；调用方按「已接受/稍后再试」处理。
 var errVulnSyncRunning = errors.New("vulnintel sync already running")
 
+// vulnSyncTimeout 是同步轮的外层墙钟上限（KEV/NVD/PoC  crawling + 资产联动 +
+// nuclei 刷新整个 pass）。vulnintel.Run 内部会按 MaxRuntime 设置截止 NVD 爬取的
+// 更早 deadline，这里只需覆盖主流程之后的收尾步骤——MaxRuntime + 10 分钟余量。
+// 曾经两处硬编码 45 分钟（v0.3.96「防干等」），UI 里把单轮上限调到 45 以上会被
+// 静默截断（2026-11-16 实测：120 分钟的设置在 45 分钟被掐，全量回灌差最后一
+// 个窗口反复被截）。3 小时兜底防止配置失误把 goroutine 无限挂起。
+func (m *Manager) vulnSyncTimeout() time.Duration {
+	mins := intSetting(m.pg, settingVulnIntelMaxRuntimeMin, defaultVulnIntelMaxRuntimeMin)
+	if mins <= 0 {
+		return 45 * time.Minute
+	}
+	d := time.Duration(mins)*time.Minute + 10*time.Minute
+	if d > 3*time.Hour {
+		d = 3 * time.Hour
+	}
+	return d
+}
+
+
 // vulnIntelProxy resolves the egress proxy for intel sync. 专用代理优先，然后
 // 复用维护链（装机代理 → 全局 → 搜索代理）——和拉更新/装工具走同一条出口。
 func (m *Manager) vulnIntelProxy() string {
@@ -80,7 +99,7 @@ func (m *Manager) SyncVulnIntelNow() bool {
 	}
 	m.vulnSyncRunning.Store(true)
 	m.vulnSyncStartedAt.Store(time.Now().Unix())
-	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), m.vulnSyncTimeout())
 	m.storeSyncCancel(cancel)
 	go func() {
 		defer m.vulnSyncMu.Unlock()

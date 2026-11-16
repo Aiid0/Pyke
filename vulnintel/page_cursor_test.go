@@ -66,3 +66,50 @@ func TestPageCursorWindowMustMatchExactly(t *testing.T) {
 		t.Errorf("same instant in another zone must compare equal: %v vs %v", gotLocal, winStart)
 	}
 }
+
+// 有页级断点时，本轮网格必须锚回断点窗口的起点：默认的 cursor-24h 回扫会把
+// 网格挪一天，页游标对不上，大窗口整窗重爬（2026-11-16 实测回灌卡死）。
+func TestNvdResumeAnchorPrefersPageCursor(t *testing.T) {
+	now := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	ws := time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC)
+	cursor := ws.Format(time.RFC3339) // 窗口没跑完，cursor 停在窗口起点
+	pc := formatPageCursor(ws, 188000)
+
+	got := nvdResumeAnchor(cursor, pc, now)
+	if !got.Equal(ws) {
+		t.Fatalf("有页级断点时应锚回断点窗口起点 %v，got %v", ws, got)
+	}
+}
+
+// 没有页级断点时保持原语义：从 cursor 回扫 24h。
+func TestNvdResumeAnchorCursorOverlapWithoutPageCursor(t *testing.T) {
+	now := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	cursor := time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+
+	got := nvdResumeAnchor(cursor, "", now)
+	want := time.Date(2026, 11, 14, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("应从 cursor 回扫 24h 到 %v，got %v", want, got)
+	}
+}
+
+// 断点窗口在未来（时钟异常/脏数据）时不采用，回落 cursor-24h。
+func TestNvdResumeAnchorRejectsFuturePageCursor(t *testing.T) {
+	now := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	cursorT := time.Date(2026, 11, 15, 0, 0, 0, 0, time.UTC)
+	pc := formatPageCursor(now.AddDate(0, 0, 7), 2000)
+
+	got := nvdResumeAnchor(cursorT.Format(time.RFC3339), pc, now)
+	want := cursorT.Add(-24 * time.Hour)
+	if !got.Equal(want) {
+		t.Fatalf("未来断点应回落 cursor-24h = %v，got %v", want, got)
+	}
+}
+
+// cursor 与页级断点都无效时返回零值，调用方回落 BackfillDays/1988。
+func TestNvdResumeAnchorZeroOnGarbage(t *testing.T) {
+	now := time.Date(2026, 11, 16, 9, 0, 0, 0, time.UTC)
+	if got := nvdResumeAnchor("garbage", "also-garbage", now); !got.IsZero() {
+		t.Fatalf("脏数据应返回零值，got %v", got)
+	}
+}

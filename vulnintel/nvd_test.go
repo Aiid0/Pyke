@@ -1,8 +1,13 @@
 package vulnintel
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestToCVEPicksPrimaryV31AndExtractsCriteria(t *testing.T) {
@@ -165,5 +170,43 @@ func TestToCVEWithoutWeaknesses(t *testing.T) {
 	}})
 	if !ok || len(c.Cwes) != 0 {
 		t.Fatalf("无 weaknesses 时 cwes 应为空，got=%v ok=%v", c.Cwes, ok)
+	}
+}
+
+// NVD 的 WAF 对超限 IP 直接甩 503（无 Retry-After）——必须映射为 RateLimited，
+// 让同步循环退避重试同一页，而不是废掉整轮（2026-11-15 实测频发）。
+func TestFetchPageMapsWaf503ToRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte("<html><body><h1>503 Service Unavailable</h1>"))
+	}))
+	defer srv.Close()
+	c := &NvdClient{Base: srv.URL, APIKey: "k-503", HTTP: srv.Client()}
+	_, err := c.FetchPage(context.Background(), 0, 1, time.Time{}, time.Time{})
+	var rl *RateLimited
+	if !errors.As(err, &rl) {
+		t.Fatalf("503 应映射为 *RateLimited，got %v", err)
+	}
+	if rl.RetryAfter <= 0 {
+		t.Fatalf("503 的退避应为正数，got %v", rl.RetryAfter)
+	}
+}
+
+// 429 保持原有行为：带 Retry-After 时照用，同步循环按它退避。
+func TestFetchPageHonors429RetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "7")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+	c := &NvdClient{Base: srv.URL, APIKey: "k-429", HTTP: srv.Client()}
+	_, err := c.FetchPage(context.Background(), 0, 1, time.Time{}, time.Time{})
+	var rl *RateLimited
+	if !errors.As(err, &rl) {
+		t.Fatalf("429 应映射为 *RateLimited，got %v", err)
+	}
+	if rl.RetryAfter != 7*time.Second {
+		t.Fatalf("RetryAfter=%v，应为 7s", rl.RetryAfter)
 	}
 }

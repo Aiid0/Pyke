@@ -30,7 +30,7 @@ func NewNvdClient(apiKey string, proxyURL string) (*NvdClient, error) {
 	return &NvdClient{
 		Base:   "https://services.nvd.nist.gov",
 		APIKey: strings.TrimSpace(apiKey),
-		HTTP:   &http.Client{Timeout: 60 * time.Second, Transport: transport},
+		HTTP:   &http.Client{Timeout: 300 * time.Second, Transport: transport},
 	}, nil
 }
 // nvdResponse is the subset of the CVE API 2.0 envelope we consume.
@@ -186,6 +186,12 @@ func (c *NvdClient) fetch(ctx context.Context, q url.Values) (*nvdResponse, erro
 		// Honor Retry-After when present; the sync loop re-calls at its own pace.
 		ra := resp.Header.Get("Retry-After")
 		return nil, &RateLimited{RetryAfter: parseSeconds(ra)}
+	}
+	if resp.StatusCode == http.StatusServiceUnavailable {
+		// NVD 的 WAF 在高负载下对超限出口 IP 直接甩 503（无 Retry-After，
+		// 实测与 429 一样是瞬时拒绝）。按限流处理让同步循环退避重试同一页，
+		// 而不是废掉整轮同步（2026-11-15 实测：带 key + 干净出口仍偶发 503）。
+		return nil, &RateLimited{RetryAfter: 30 * time.Second}
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))

@@ -213,12 +213,7 @@ func syncNVD(ctx context.Context, st *Store, cfg Config) error {
 		return err
 	}
 	now := time.Now()
-	var from time.Time
-	if state.Cursor != "" {
-		if t, e := time.Parse(time.RFC3339, state.Cursor); e == nil {
-			from = t.Add(-24 * time.Hour)
-		}
-	}
+	from := nvdResumeAnchor(state.Cursor, state.PageCursor, now)
 	if from.IsZero() && cfg.BackfillDays > 0 {
 		from = now.AddDate(0, 0, -cfg.BackfillDays)
 	}
@@ -273,6 +268,29 @@ func syncNVD(ctx context.Context, st *Store, cfg Config) error {
 	return nil
 }
 
+// nvdResumeAnchor 决定本轮窗口网格的起点。
+//
+// 默认从 cursor 回扫 24h（吸收 NVD 索引延迟：上一轮回扫期间披露的 CVE 可能
+// 带着窗口起点之前的 lastMod 入库）。但**有页级断点**（上个窗口没跑完）时必须
+// 锚回断点窗口的起点：回扫会把本轮网格整体挪一天，页游标的窗口起点对不上，
+// 断点作废，大窗口只能从第 0 页重爬——2026-11-16 实测 19 万条的窗口每轮重爬
+// 前几千条就超时，回灌永远差最后一公里。锚回去的代价只是这一个窗口边界的
+// 24h 少扫一遍（重要 CVE 有快通道兜底），窗口完成后 cursor 推进，后续窗口的
+// 24h 回扫照常。
+//
+// cursor 无法解析且没有页级断点时返回零值，调用方回落到 BackfillDays/1988。
+func nvdResumeAnchor(cursor, pageCursor string, now time.Time) time.Time {
+	if ws, _, ok := parsePageCursor(pageCursor); ok && ws.Before(now) {
+		return ws
+	}
+	if cursor != "" {
+		if t, e := time.Parse(time.RFC3339, cursor); e == nil {
+			return t.Add(-24 * time.Hour)
+		}
+	}
+	return time.Time{}
+}
+
 // formatPageCursor encodes "window start | next startIndex" for the page-level
 // resume watermark.
 func formatPageCursor(winStart time.Time, startIndex int) string {
@@ -312,7 +330,7 @@ func syncNVDWindow(ctx context.Context, client *NvdClient, st *Store, start, end
 		if err := ctx.Err(); err != nil {
 			return total, err
 		}
-		resp, err := client.FetchPage(ctx, idx, pageSize, start, end)
+		resp, err := fetchNVDPageWithRetry(ctx, client, idx, pageSize, start, end)
 		if err != nil {
 			var rl *RateLimited
 			if errors.As(err, &rl) {
@@ -355,6 +373,36 @@ func syncNVDWindow(ctx context.Context, client *NvdClient, st *Store, start, end
 			return total, ctx.Err()
 		case <-time.After(delay):
 		}
+	}
+}
+
+// fetchNVDPageWithRetry 拉一页，瞬时错误按 5s/15s/45s 退避重试（最多 3 次）。
+//
+// 为什么需要：密窗口一页是 2000 条约 5MB 的 JSON，走代理传一半被掐断
+// （HTTP/2 INTERNAL_ERROR）、或 NVD 生成慢到触发超时，都是瞬时故障——按
+// 原设计直接 return，整轮作废，下轮又从第 0 页重爬（2026-11-16 实测）。
+// 429/503 的 RateLimited 不在此重试，交给主循环按限流语义等窗口。
+// ctx 取消（MaxRuntime 到点/用户中断）不重试，立即向上传。
+func fetchNVDPageWithRetry(ctx context.Context, client *NvdClient, startIndex, pageSize int, start, end time.Time) (*nvdResponse, error) {
+	backoff := 5 * time.Second
+	for attempt := 1; ; attempt++ {
+		resp, err := client.FetchPage(ctx, startIndex, pageSize, start, end)
+		if err == nil {
+			return resp, nil
+		}
+		var rl *RateLimited
+		if errors.As(err, &rl) {
+			return nil, err
+		}
+		if ctx.Err() != nil || attempt >= 3 {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+		backoff *= 3
 	}
 }
 

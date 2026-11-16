@@ -1068,7 +1068,7 @@ func (m *Manager) runVulnIntelSync() {
 				m.vulnSyncMu.Unlock()
 			}
 		} else {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), m.vulnSyncTimeout())
 			// TryLock 保证与页面「立即同步」不并发：同一时刻只允许一轮。
 			if err := m.runVulnIntelPass(ctx); err != nil {
 				log.Printf("[vulnintel] 本轮跳过: %v", err)
