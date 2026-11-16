@@ -6,6 +6,7 @@
 
 | 工具 | 作用 | 破坏性 |
 |---|---|---|
+| `vm_desktop_status` | 检查 Guest Additions、登录用户、显示控制器和截图前提 | 只读 |
 | `vm_list` | 靶场清单（名称/状态/快照/内存/CPU） | 只读 |
 | `vm_start` | 启动 VM（默认 headless） | 低 |
 | `vm_stop` | 关机（acpi 温和 / poweroff 硬断电需 confirm） | 中 |
@@ -13,6 +14,7 @@
 | `vm_snapshot_take` | 拍快照（攻击前落基线） | 低 |
 | `vm_snapshot_restore` | **还原快照（靶场重置核心）**，需 confirm | 高 |
 | `vm_exec` | guest 内执行命令取回输出（RCE 效果验证核心），需 GA + 凭据 | 高（内容取决于命令） |
+| `vm_demo_calculator` | Windows 交互会话启动计算器、进程核验并尝试截图；仅验证桌面链路 | 中（启动一次计算器并创建临时任务） |
 | `vm_screenshot` | VM 画面截图（取证），返回宿主机侧路径 | 只读 |
 | `vm_copyto` | 投送文件进 guest（payload/取证脚本），需 GA + 凭据 | 中 |
 | `vm_copyfrom` | 回收 guest 文件（战果取证），需 GA + 凭据 | 只读 |
@@ -43,6 +45,11 @@
 - `local` 驱动：就是本机路径，无坑；
 - `win-interop`：VBoxManage.exe 在 Windows 上执行——`VM_SCREENSHOT_DIR`（默认 `./vm-screenshots`）与 copyto 源路径都应给 **Windows 路径**（如 `C:\Users\you\vm-shots`），WSL 侧可通过 `/mnt/c/...` 访问产物用于 save_evidence 归档；
 - `ssh`：路径在远程宿主上；截图产物留在远端，工具返回会明确提示。
+
+Windows headless 的 WDDM 驱动接管桌面后，VirtualBox 主机侧 `screenshotpng` 在部分版本会返回
+`NS_ERROR_FAILURE`。`vm_screenshot` 会自动回退到已登录 guest 内的 PowerShell/.NET 桌面捕获，
+再通过 Guest Additions 回收到 `VM_SCREENSHOT_DIR`；因此 `vm_desktop_status` 报告没有登录用户时，
+应先完成 guest 登录再做视觉验收。
 
 ## 前提条件
 

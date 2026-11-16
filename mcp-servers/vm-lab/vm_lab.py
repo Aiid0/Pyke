@@ -131,13 +131,17 @@ def _vbox(*args: str, timeout: int = CTRL_TIMEOUT_DEFAULT) -> str:
     else:
         argv = [*prefix, *args]
     try:
-        cp = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        # VBoxManage 可能转发 guest/宿主机本地化错误文本（Windows 常见为非 UTF-8）。
+        # 证据链不能因为一行本地化提示解码失败而中断，因此保留文本并替换坏字节。
+        cp = subprocess.run(argv, capture_output=True, text=True, errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired:
         raise VMError(f"VBoxManage 超时（{timeout}s）：{' '.join(args[:2])}。VM 可能卡在异常状态，可 vm_list 看状态。")
     except FileNotFoundError:
         raise VMError(f"找不到 VBoxManage（驱动 {desc}）。请装 VirtualBox 或配置 VM_DRIVER/VM_VBOXMANAGE。")
     if cp.returncode != 0:
         err = (cp.stderr or cp.stdout or "").strip()
+        if "/dev/vboxdrv" in err or "/dev/vboxdrv" in (cp.stdout or ""):
+            raise VMError("VirtualBox 内核驱动 /dev/vboxdrv 不可用。请在宿主机修复 VirtualBox 内核模块后再做 VM 验证。")
         raise VMError(f"VBoxManage 失败（{' '.join(args[:2])}）：{err or f'退出码 {cp.returncode}'}")
     return cp.stdout
 
@@ -216,7 +220,65 @@ def _screenshot_dir() -> Path:
     return d
 
 
+def _guest_property(vm: str, name: str) -> str:
+    """Read one Guest Additions property without turning a missing value into an error."""
+    try:
+        out = _vbox("guestproperty", "get", vm, name, timeout=15).strip()
+    except VMError:
+        return ""
+    if ":" not in out or out.endswith("No value set!"):
+        return ""
+    return out.split(":", 1)[1].strip()
+
+
 # ---------------------------------------------------------------- 工具
+
+
+@mcp.tool()
+def vm_desktop_status(vm: str) -> str:
+    """检查 VM 是否具备可截图的真实桌面。
+
+    这个检查专门区分四种容易混淆的状态：VBox 驱动不可用、VM 未运行、
+    guest 没有 Guest Additions/登录用户，以及 VM 正在运行但没有有效桌面画面。
+    它不会把“VBoxManage 能列出 VM”误判为桌面已经就绪。
+    """
+    ident = _resolve_vm(vm)
+    info = _parse_machinereadable(_vbox("showvminfo", ident, "--machinereadable", timeout=20))
+    state = info.get("VMState", "unknown")
+    session = info.get("SessionName", "")
+    graphics = info.get("graphicscontroller", "unknown")
+    monitors = info.get("monitorcount", "unknown")
+    vram = info.get("vram", "unknown")
+    os_name = _guest_property(ident, "/VirtualBox/GuestInfo/OS/Product")
+    logged_in = _guest_property(ident, "/VirtualBox/GuestInfo/OS/LoggedInUsers")
+    guest_add = _guest_property(ident, "/VirtualBox/GuestAdd/Version")
+    ip = _guest_property(ident, "/VirtualBox/GuestInfo/Net/0/V4/IP")
+    problems: list[str] = []
+    if state != "running":
+        problems.append(f"VM 未运行（{state}）")
+    if not guest_add:
+        problems.append("Guest Additions 不可用，无法可靠读取 guest 桌面状态")
+    if not logged_in or logged_in in ("0", "false", "False"):
+        problems.append("guest 没有检测到登录用户，GUI 程序可能落在不可见会话")
+    if not graphics or graphics == "unknown" or monitors in ("0", "unknown"):
+        problems.append("没有有效的虚拟显示设备")
+    if session.lower() == "headless":
+        problems.append("当前为 headless 会话；Windows GUI 取证需确认 framebuffer 可用")
+    result = {
+        "vm": vm,
+        "state": state,
+        "session": session,
+        "guest_os": os_name,
+        "logged_in_users": logged_in,
+        "guest_additions": guest_add,
+        "ip": ip,
+        "graphics_controller": graphics,
+        "monitor_count": monitors,
+        "vram_mb": vram,
+        "screenshot_ready": not problems,
+        "problems": problems,
+    }
+    return json.dumps(result, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -352,8 +414,8 @@ def vm_exec(vm: str, exe: str, args: list[str] | None = None, timeout_sec: int =
                  Linux 例：/bin/sh。
       args       参数列表。Windows cmd 包装：["/c", "whoami && dir C:\\"]；
                  Linux shell 包装：["-c", "id; ls -la /root"]。
-                 注意 first token after -- 是 argv0，本工具已按 VBoxManage 语义
-                 自动拼接（exe 会出现两次，这是 VBoxManage 的要求）。
+      `exe` 通过 `--exe` 传给 VBoxManage；`args` 是 `--` 后传给 guest
+                 程序的参数列表，不要把 exe 再重复放进 args。
       timeout_sec 上限 600；wait=false 时只触发不等待（适合长任务）。
 
     典型验证姿势（拿到 RCE 后）：whoami / ipconfig / 进程清单 / 计划任务 /
@@ -372,7 +434,10 @@ def vm_exec(vm: str, exe: str, args: list[str] | None = None, timeout_sec: int =
                     "--exe", exe]
         if wait:
             run_args += ["--wait-stdout", "--wait-stderr"]
-        run_args += ["--", exe, *argv_args]
+        # VBoxManage 7.x 将 --exe 作为程序路径，-- 后只接受程序参数。
+        # 再重复传入 exe 会被 Windows 程序误当成第一个参数（例如 whoami
+        # 会报“无效参数/选项”），也会让 PowerShell/cmd 的 /c 语义失效。
+        run_args += ["--", *argv_args]
         with _vm_lock(ident):
             # guestcontrol 自身没有全局超时参数，靠 subprocess timeout 兜底；
             # 留 10s 余量给 VBox 内部握手。
@@ -385,6 +450,78 @@ def vm_exec(vm: str, exe: str, args: list[str] | None = None, timeout_sec: int =
     # VBoxManage 把 guest 进程 stderr 混在 stdout 里；wait-process 时退出码
     # 不直接给出，输出里 "Exit code=" 行由 VBox 打印，原样带回即可。
     return out.strip() or f"（{vm} 内命令执行完成，无输出）"
+
+
+@mcp.tool()
+def vm_demo_calculator(vm: str, confirm: bool = False, wait_sec: int = 3) -> str:
+    """在已登录的 Windows guest 中启动计算器并立即尝试截图和进程核验。
+
+    这是桌面链路的验收工具，不代表漏洞已经触发。必须显式 confirm=true；
+    工具会通过 Guest Additions 执行一次性、可识别的 PykeCalc 交互任务，
+    然后返回进程输出与截图路径。若 Windows 处于锁屏或没有交互用户，会明确报告，
+    不把后台启动成功当作桌面可见。
+    """
+    if not confirm:
+        raise VMError("启动计算器是桌面验证动作，请显式传 confirm=true。")
+    if not 1 <= int(wait_sec or 3) <= 15:
+        raise VMError("wait_sec 只能是 1 到 15 秒。")
+    ident = _resolve_vm(vm)
+    info = _parse_machinereadable(_vbox("showvminfo", ident, "--machinereadable"))
+    os_name = _guest_property(ident, "/VirtualBox/GuestInfo/OS/Product").lower()
+    if "windows" not in os_name and "win" not in info.get("ostype", "").lower():
+        raise VMError(f"{vm} 不是 Windows guest（检测到 {os_name or info.get('ostype', 'unknown')}），计算器演示暂只支持 Windows。")
+    # /IT 要求任务运行在交互用户会话；使用未来一分钟避免 /ST 早于当前时间。
+    command = (
+        "$t=(Get-Date).AddMinutes(1).ToString('HH:mm'); "
+        "schtasks /Create /TN PykeCalc /TR calc.exe /SC ONCE /ST $t /IT /F; "
+        "schtasks /Run /TN PykeCalc"
+    )
+    launch = vm_exec(
+        vm,
+        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+        timeout_sec=45,
+    )
+    time.sleep(int(wait_sec or 3))
+    process = vm_exec(
+        vm,
+        r"C:\Windows\System32\tasklist.exe",
+        ["/FI", "IMAGENAME eq CalculatorApp.exe", "/FO", "LIST"],
+        timeout_sec=30,
+    )
+    try:
+        shot = vm_screenshot(vm)
+    except VMError as exc:
+        shot = f"截图失败：{exc}"
+    return json.dumps({"launch": launch, "process_check": process, "screenshot": shot}, ensure_ascii=False)
+
+
+def _windows_guest_screenshot(vm: str, host_path: Path) -> str:
+    """Capture the interactive Windows desktop from inside the guest.
+
+    VirtualBox's host-side screenshot API can fail after the Windows WDDM driver
+    takes over a headless display. GuestControl runs this small capture in the
+    logged-in desktop session, which preserves the evidence path without
+    requiring a GUI VirtualBox frontend.
+    """
+    guest_path = r"C:\Windows\Temp\pyke-vm-desktop.png"
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms; "
+        "Add-Type -AssemblyName System.Drawing; "
+        "$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; "
+        "$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height); "
+        "$g=[System.Drawing.Graphics]::FromImage($bmp); "
+        "$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); "
+        f"$bmp.Save('{guest_path}',[System.Drawing.Imaging.ImageFormat]::Png); "
+        "$g.Dispose(); $bmp.Dispose(); Write-Output 'desktop screenshot saved'"
+    )
+    vm_exec(
+        vm,
+        r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+        timeout_sec=45,
+    )
+    return vm_copyfrom(vm, guest_path, str(host_path))
 
 
 @mcp.tool()
@@ -401,8 +538,26 @@ def vm_screenshot(vm: str) -> str:
         raise VMError(f"{vm} 不在运行（{state}），没有画面可截。先 vm_start。")
     d = _screenshot_dir()
     path = d / f"{time.strftime('%Y%m%d-%H%M%S')}-{re.sub(r'[^A-Za-z0-9._-]', '_', ident)[:40]}.png"
+    host_exc: VMError | None = None
     with _vm_lock(ident):
-        _vbox("controlvm", ident, "screenshotpng", str(path))
+        try:
+            _vbox("controlvm", ident, "screenshotpng", str(path))
+        except VMError as exc:
+            host_exc = exc
+    if host_exc is not None:
+        # Windows WDDM + headless can make VBox's framebuffer API fail even
+        # though the interactive desktop and Guest Additions are healthy.
+        # Capture from inside the guest before surfacing the host error. This
+        # must happen outside the VM lock because the fallback uses guestcontrol.
+        guest_os = _guest_property(ident, "/VirtualBox/GuestInfo/OS/Product").lower()
+        if "windows" not in guest_os:
+            raise host_exc
+        try:
+            _windows_guest_screenshot(vm, path)
+        except VMError as guest_exc:
+            raise VMError(f"宿主端截图失败：{host_exc}；Windows guest 内回退截图也失败：{guest_exc}") from guest_exc
+    if not path.exists() or path.stat().st_size < 100:
+        raise VMError(f"VBoxManage 返回成功但没有生成有效截图：{path}。请检查 framebuffer、显示控制器和锁屏状态。")
     return f"截图已保存：{path}"
 
 
