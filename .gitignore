@@ -8,7 +8,7 @@
 /dist/
 *.zip
 SHA256SUMS
-
+reference/
 # 前端开发产物
 /web/node_modules/
 /web/.next/
