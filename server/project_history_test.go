@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -373,5 +374,21 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 	var automatic int
 	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_fix_analysis WHERE project_id=$1 AND analysis_key LIKE 'auto:v1:%'`, p.ID).Scan(&automatic); err != nil || automatic == 0 {
 		t.Fatalf("automatic analyses=%d: %v", automatic, err)
+	}
+	for i := 0; i < 202; i++ {
+		git("-C", work, "commit", "--allow-empty", "-qm", fmt.Sprintf("ordinary %d", i))
+	}
+	git("-C", work, "push", "-q", bare, "main")
+	deeper, err := s.m.pg.CreateProject(db.Project{ID: uuid.NewString(), Name: "deep history", SourceType: "git", RepositoryURL: service.URL + "/repo.git", Branch: "main", FileCount: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = s.m.pg.Exec(`DELETE FROM projects WHERE id=$1`, deeper.ID) })
+	if err := s.runHistorySync(context.Background(), deeper, "tester", token); err != nil {
+		t.Fatalf("shallow history did not deepen with import credentials: %v", err)
+	}
+	var deepCount int
+	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_history_commits WHERE project_id=$1`, deeper.ID).Scan(&deepCount); err != nil || deepCount != 204 {
+		t.Fatalf("deep history indexed=%d: %v", deepCount, err)
 	}
 }

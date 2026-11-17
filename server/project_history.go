@@ -23,6 +23,7 @@ import (
 
 const historyBatchSize = 100
 const historyScreenVersion = 1
+const historyMaxDeepensPerRun = 20
 
 var historySHAPattern = regexp.MustCompile(`^[a-f0-9]{40,64}$`)
 var historyJobs sync.Map // one active history worker per project in this process
@@ -335,6 +336,31 @@ func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, to
 		ON CONFLICT DO NOTHING`, p.ID, historyScreenVersion); err != nil {
 		return err
 	}
+	deepens := 0
+	deepenHistory := func() (bool, error) {
+		shallow, e := historyGit(ctx, dir, "", "", "rev-parse", "--is-shallow-repository")
+		if e != nil {
+			return false, errors.New("无法确认 Git 历史深度")
+		}
+		if shallow != "true" {
+			return false, nil
+		}
+		if deepens >= historyMaxDeepensPerRun {
+			return false, errors.New("历史尚未拉取到更早提交；再次同步可继续加深")
+		}
+		if _, e := historyGit(ctx, dir, username, token, "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--deepen=200", "--", p.RepositoryURL, branch); e != nil {
+			return false, errors.New("Git 历史拉取失败，请检查仓库权限与网络")
+		}
+		deepens++
+		// A shallow boundary was indexed as a root. Revisit roots after deepening
+		// so their newly visible parents enter the durable commit queue.
+		if _, e := s.m.pg.ExecContext(ctx, `INSERT INTO project_history_queue(project_id,commit_sha)
+			SELECT project_id,commit_sha FROM project_history_commits
+			WHERE project_id=$1 AND cardinality(parents)=0 ON CONFLICT DO NOTHING`, p.ID); e != nil {
+			return false, e
+		}
+		return true, nil
+	}
 	for {
 		rows, err := s.m.pg.QueryContext(ctx, `SELECT commit_sha FROM project_history_queue WHERE project_id=$1 ORDER BY commit_sha LIMIT $2`, p.ID, historyBatchSize)
 		if err != nil {
@@ -356,6 +382,13 @@ func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, to
 			return err
 		}
 		if len(batch) == 0 {
+			deepened, e := deepenHistory()
+			if e != nil {
+				return e
+			}
+			if deepened {
+				continue
+			}
 			if rewritten {
 				_, err = s.m.pg.ExecContext(ctx, historyReachableSQL+`UPDATE project_history_commits c SET orphaned=NOT EXISTS(
 					SELECT 1 FROM reachable r WHERE r.sha=c.commit_sha) WHERE c.project_id=$1`, p.ID, head)
@@ -379,7 +412,13 @@ func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, to
 			}
 		}
 		if missing {
-			return errors.New("历史尚未拉取到更早提交；再次同步可继续加深")
+			deepened, e := deepenHistory()
+			if e != nil {
+				return e
+			}
+			if !deepened {
+				return errors.New("历史提交对象缺失，无法继续回溯")
+			}
 		}
 	}
 }
@@ -447,21 +486,21 @@ func (s *Server) indexHistoryCommit(ctx context.Context, projectID, dir, sha str
 	defer tx.Rollback()
 	if _, err = tx.ExecContext(ctx, `INSERT INTO project_history_commits(project_id,commit_sha,parents,authored_at,subject,files,score,reasons,diff_excerpt,diff_truncated,screen_version)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-		ON CONFLICT(project_id,commit_sha) DO UPDATE SET score=EXCLUDED.score,reasons=EXCLUDED.reasons,
+		ON CONFLICT(project_id,commit_sha) DO UPDATE SET parents=EXCLUDED.parents,score=EXCLUDED.score,reasons=EXCLUDED.reasons,
 			diff_excerpt=EXCLUDED.diff_excerpt,diff_truncated=EXCLUDED.diff_truncated,screen_version=EXCLUDED.screen_version
-		WHERE project_history_commits.screen_version<EXCLUDED.screen_version`, projectID, sha, parents, authored, parts[2], files, score, reasons, diffExcerpt, diffTruncated, historyScreenVersion); err != nil {
+		WHERE project_history_commits.screen_version<EXCLUDED.screen_version OR project_history_commits.parents IS DISTINCT FROM EXCLUDED.parents`, projectID, sha, parents, authored, parts[2], files, score, reasons, diffExcerpt, diffTruncated, historyScreenVersion); err != nil {
 		return err
 	}
 	if score > 0 {
 		if _, err = tx.ExecContext(ctx, `INSERT INTO project_fix_candidates(project_id,primary_sha,score,reasons,screen_version)
 			VALUES($1,$2,$3,$4,$5) ON CONFLICT(project_id,primary_sha) DO UPDATE SET score=EXCLUDED.score,reasons=EXCLUDED.reasons,
 			state='needs_review',screen_version=EXCLUDED.screen_version,updated_at=now()
-			WHERE project_fix_candidates.screen_version<EXCLUDED.screen_version`, projectID, sha, score, reasons, historyScreenVersion); err != nil {
+			WHERE project_fix_candidates.screen_version<EXCLUDED.screen_version OR project_fix_candidates.score IS DISTINCT FROM EXCLUDED.score`, projectID, sha, score, reasons, historyScreenVersion); err != nil {
 			return err
 		}
 	} else {
-		if _, err = tx.ExecContext(ctx, `UPDATE project_fix_candidates SET state='needs_review',screen_version=$3,updated_at=now()
-			WHERE project_id=$1 AND primary_sha=$2 AND screen_version<$3`, projectID, sha, historyScreenVersion); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE project_fix_candidates SET state='needs_review',score=0,reasons=$4,screen_version=$3,updated_at=now()
+			WHERE project_id=$1 AND primary_sha=$2 AND (screen_version<$3 OR score<>0)`, projectID, sha, historyScreenVersion, reasons); err != nil {
 			return err
 		}
 	}
