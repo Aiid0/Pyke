@@ -514,6 +514,92 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- 项目 Git 历史独立于任务源码快照。原始对象位于项目私有目录；这里保存
+-- 可续跑队列、筛选结论和多轮分析，不把候选等同于已确认漏洞。
+CREATE TABLE IF NOT EXISTS project_history (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    state TEXT NOT NULL DEFAULT 'idle',
+    head_sha TEXT NOT NULL DEFAULT '',
+    branch TEXT NOT NULL DEFAULT '',
+    indexed BIGINT NOT NULL DEFAULT 0,
+    candidates BIGINT NOT NULL DEFAULT 0,
+    last_error TEXT NOT NULL DEFAULT '',
+    job_id TEXT NOT NULL DEFAULT '',
+    lease_until TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE project_history ADD COLUMN IF NOT EXISTS job_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_history ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS project_history_queue (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    commit_sha TEXT NOT NULL,
+    PRIMARY KEY (project_id, commit_sha)
+);
+CREATE TABLE IF NOT EXISTS project_history_commits (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    commit_sha TEXT NOT NULL,
+    parents TEXT[] NOT NULL DEFAULT '{}',
+    authored_at TIMESTAMPTZ,
+    subject TEXT NOT NULL DEFAULT '',
+    files TEXT[] NOT NULL DEFAULT '{}',
+    score INT NOT NULL DEFAULT 0,
+    reasons TEXT[] NOT NULL DEFAULT '{}',
+    diff_excerpt TEXT NOT NULL DEFAULT '',
+    diff_truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    orphaned BOOLEAN NOT NULL DEFAULT FALSE,
+    screen_version INT NOT NULL DEFAULT 1,
+    PRIMARY KEY (project_id, commit_sha)
+);
+CREATE INDEX IF NOT EXISTS idx_project_history_rank ON project_history_commits(project_id, score DESC, authored_at DESC);
+ALTER TABLE project_history_commits ADD COLUMN IF NOT EXISTS diff_excerpt TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_history_commits ADD COLUMN IF NOT EXISTS diff_truncated BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE project_history_commits ADD COLUMN IF NOT EXISTS orphaned BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE TABLE IF NOT EXISTS project_history_refs (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    ref_name TEXT NOT NULL,
+    head_sha TEXT NOT NULL DEFAULT '',
+    previous_head_sha TEXT NOT NULL DEFAULT '',
+    rewritten BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (project_id,ref_name)
+);
+CREATE TABLE IF NOT EXISTS project_fix_candidates (
+    id BIGSERIAL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    primary_sha TEXT NOT NULL,
+    score INT NOT NULL,
+    reasons TEXT[] NOT NULL DEFAULT '{}',
+    state TEXT NOT NULL DEFAULT 'pending',
+    depth TEXT NOT NULL DEFAULT 'screened',
+    current_summary TEXT NOT NULL DEFAULT '',
+    screen_version INT NOT NULL DEFAULT 1,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (project_id,primary_sha),
+    FOREIGN KEY (project_id,primary_sha) REFERENCES project_history_commits(project_id,commit_sha) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_project_fix_candidates_rank ON project_fix_candidates(project_id,score DESC,id DESC);
+INSERT INTO project_fix_candidates(project_id,primary_sha,score,reasons)
+SELECT c.project_id,c.commit_sha,c.score,c.reasons FROM project_history_commits c
+LEFT JOIN project_fix_candidates k ON k.project_id=c.project_id AND k.primary_sha=c.commit_sha
+WHERE c.score>0 AND k.id IS NULL
+ON CONFLICT (project_id,primary_sha) DO NOTHING;
+CREATE TABLE IF NOT EXISTS project_fix_analysis (
+    id BIGSERIAL PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    commit_sha TEXT NOT NULL,
+    task_id BIGINT,
+    target_revision TEXT NOT NULL DEFAULT '',
+    question TEXT NOT NULL,
+    conclusion TEXT NOT NULL DEFAULT '',
+    evidence JSONB NOT NULL DEFAULT '{}',
+    state TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    FOREIGN KEY (project_id, commit_sha) REFERENCES project_history_commits(project_id, commit_sha) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_project_fix_analysis_commit ON project_fix_analysis(project_id, commit_sha, id DESC);
+ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS target_revision TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS tasks (
     id             BIGSERIAL PRIMARY KEY,
     name           TEXT NOT NULL DEFAULT '',
@@ -547,6 +633,20 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_alive  ON tasks(created_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)          WHERE deleted_at IS NULL;
+CREATE TABLE IF NOT EXISTS task_fix_leads (
+    task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    candidate_id BIGINT NOT NULL REFERENCES project_fix_candidates(id) ON DELETE CASCADE,
+    target_revision TEXT NOT NULL,
+    applicability TEXT NOT NULL DEFAULT 'reachable',
+    verification_state TEXT NOT NULL DEFAULT 'unverified',
+    verdict_note TEXT NOT NULL DEFAULT '',
+    intent_id BIGINT,
+    fact_id BIGINT,
+    finding_id BIGINT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(task_id,candidate_id,target_revision)
+);
+ALTER TABLE task_fix_leads ADD COLUMN IF NOT EXISTS verdict_note TEXT NOT NULL DEFAULT '';
 DROP TRIGGER IF EXISTS trg_tasks_upd ON tasks;
 CREATE TRIGGER trg_tasks_upd BEFORE UPDATE ON tasks
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
