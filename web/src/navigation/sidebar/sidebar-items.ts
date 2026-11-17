@@ -8,7 +8,6 @@ import {
   ClipboardList,
   FolderOpen,
   FolderSync,
-  GitCommitHorizontal,
   LayoutDashboard,
   type LucideIcon,
   Network,
@@ -71,7 +70,6 @@ export const sidebarItems: NavGroup[] = [
     items: [
       { id: "dashboard", title: "仪表盘", url: "/dashboard", icon: LayoutDashboard },
       { id: "tasks", title: "任务", url: "/function/tasks", icon: Target },
-      { id: "history", title: "历史修复分析", url: "/function/history", icon: GitCommitHorizontal },
       { id: "findings", title: "发现", url: "/function/findings", icon: Bug },
       { id: "traffic", title: "流量", url: "/function/traffic", icon: Activity },
       { id: "commands", title: "工具执行", url: "/function/commands", icon: Terminal },
