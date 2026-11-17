@@ -10,10 +10,10 @@ import { http } from "@/lib/api";
 import type { ImportedProject } from "@/lib/types";
 
 type Status = { state: string; head_sha: string; branch: string; indexed: number; candidates: number; pending: number; last_error: string; shallow: boolean; rewritten: boolean };
-type Commit = { commit_sha: string; authored_at: string; subject: string; files: string[]; score: number; reasons: string[]; orphaned: boolean; candidate_id?: number; candidate_state?: string; depth?: string; verification_state?: string; verdict_note?: string };
-type Analysis = { id: number; question: string; conclusion: string; state: string; created_at: string; target_revision?: string; task_id?: number };
+type Commit = { commit_sha: string; authored_at: string; subject: string; files: string[]; score: number; reasons: string[]; orphaned: boolean; candidate_id?: number; candidate_state?: string; depth?: string };
+type Analysis = { id: number; question: string; conclusion: string; state: string; created_at: string; last_error?: string };
 
-export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProject; taskId?: string }) {
+export function ProjectHistoryPanel({ project }: { project: ImportedProject }) {
   const [status, setStatus] = React.useState<Status | null>(null);
   const [commits, setCommits] = React.useState<Commit[]>([]);
   const [listError, setListError] = React.useState("");
@@ -23,6 +23,7 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
   const [diffTruncated, setDiffTruncated] = React.useState(false);
   const [analyses, setAnalyses] = React.useState<Analysis[]>([]);
   const [question, setQuestion] = React.useState("");
+  const requestKey = React.useRef("");
   const [busy, setBusy] = React.useState(false);
   const [token, setToken] = React.useState("");
   const [username, setUsername] = React.useState("");
@@ -31,7 +32,6 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
   const [from, setFrom] = React.useState("");
   const [to, setTo] = React.useState("");
   const base = `/projects/${encodeURIComponent(project.id)}/history`;
-  const taskQuery = taskId ? `&task_id=${encodeURIComponent(taskId)}` : "";
 
   const refresh = React.useCallback(async () => {
     const next = await http<Status>(base);
@@ -39,10 +39,10 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
     if (next.state === "disabled" || next.indexed === 0) { setCommits([]); setListError(""); return; }
     const filters = `${shaFilter ? `&sha=${encodeURIComponent(shaFilter)}` : ""}${from ? `&from=${encodeURIComponent(from)}` : ""}${to ? `&to=${encodeURIComponent(to)}` : ""}`;
     try {
-      const result = await http<{ items: Commit[] }>(`${base}/commits?candidates=${shaFilter ? 0 : 1}&offset=${offset}&limit=20${taskQuery}${filters}`);
+      const result = await http<{ items: Commit[] }>(`${base}/commits?candidates=${shaFilter ? 0 : 1}&offset=${offset}&limit=20${filters}`);
       setCommits(result.items); setListError("");
     } catch (error) { setCommits([]); setListError((error as Error).message); }
-  }, [base, offset, taskQuery, shaFilter, from, to]);
+  }, [base, offset, shaFilter, from, to]);
 
   React.useEffect(() => { void refresh().catch((error) => toast.error((error as Error).message)); }, [refresh]);
   React.useEffect(() => {
@@ -50,6 +50,16 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
     const timer = window.setInterval(() => void refresh().catch(() => {}), 3000);
     return () => window.clearInterval(timer);
   }, [status?.state, refresh]);
+  React.useEffect(() => {
+    if (!selected || !analyses.some((item) => item.state === "pending" || item.state === "running")) return;
+    const timer = window.setInterval(() => {
+      void http<{ items: Analysis[] }>(`${base}/commits/${selected.commit_sha}/analyses`).then((result) => {
+        setAnalyses(result.items);
+        if (result.items.every((item) => item.state !== "pending" && item.state !== "running")) void refresh();
+      }).catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [analyses, base, refresh, selected]);
 
   async function sync() {
     setBusy(true);
@@ -65,7 +75,7 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
     setSelected(commit); setDiff(""); setAnalyses([]);
     try {
       const [source, saved] = await Promise.all([
-        http<{ diff: string; truncated: boolean }>(`${base}/commits/${commit.commit_sha}/diff?task_id=${encodeURIComponent(taskId || "")}${path ? `&path=${encodeURIComponent(path)}` : ""}`),
+        http<{ diff: string; truncated: boolean }>(`${base}/commits/${commit.commit_sha}/diff${path ? `?path=${encodeURIComponent(path)}` : ""}`),
         http<{ items: Analysis[] }>(`${base}/commits/${commit.commit_sha}/analyses`),
       ]);
       setDiff(source.diff); setDiffTruncated(source.truncated); setAnalyses(saved.items);
@@ -76,10 +86,12 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
     if (!selected || question.trim().length < 5) return;
     setBusy(true);
     try {
-      await http(`${base}/commits/${selected.commit_sha}/analyses`, { method: "POST", body: JSON.stringify({ question: question.trim(), ...(taskId ? { task_id: Number(taskId) } : {}) }) });
+      if (!requestKey.current) requestKey.current = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+      await http(`${base}/commits/${selected.commit_sha}/analyses`, { method: "POST", body: JSON.stringify({ question: question.trim(), idempotency_key: requestKey.current }) });
+      requestKey.current = "";
       setQuestion("");
       await open(selected);
-      toast.success(taskId ? "深入分析请求已保存并交给任务规划者" : "深入分析问题已留存");
+      toast.success("深入分析已加入独立作业队列");
     } catch (error) { toast.error((error as Error).message); }
     finally { setBusy(false); }
   }
@@ -118,7 +130,7 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
         className="flex w-full items-start gap-3 py-2 text-left text-xs transition-colors hover:bg-muted/40 focus-visible:outline-primary">
         <span className="shrink-0 font-mono text-primary">{commit.commit_sha.slice(0, 9)}</span>
         <span className="min-w-0 flex-1"><span className="block truncate font-medium">{commit.subject}</span>
-          <span className="text-muted-foreground">{commit.reasons.join(" · ") || "人工指定"} · {commit.depth === "deep" ? "已深查" : "待深查"}{taskId && commit.verification_state && commit.verification_state !== "unverified" ? ` · ${commit.verification_state === "reported" ? "本任务已上报" : "本任务已排除"}` : ""}</span></span>
+          <span className="text-muted-foreground">{commit.reasons.join(" · ") || "人工指定"} · {commit.depth === "deep" ? "已深查" : "待深查"}</span></span>
         <span className="font-mono text-muted-foreground">{commit.score}</span>
         {commit.orphaned && <span className="text-muted-foreground">已脱离当前分支</span>}
       </button>)}
@@ -132,18 +144,16 @@ export function ProjectHistoryPanel({ project, taskId }: { project: ImportedProj
       <p className="break-all font-mono text-xs text-primary">{selected.commit_sha}</p>
       <p className="mt-1 text-sm font-medium">{selected.subject}</p>
       <p className="mt-1 text-xs text-muted-foreground">{selected.files.slice(0, 8).join(" · ")}</p>
-      {selected.verdict_note && <p className="mt-2 rounded-md border bg-muted/30 p-2 text-xs">本任务判断：{selected.verdict_note}</p>}
       {selected.files.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{selected.files.slice(0, 20).map((file) => <Button key={file} type="button" size="sm" variant="ghost" className="h-auto max-w-full truncate px-2 py-1 font-mono text-[11px]" onClick={() => void open(selected, file)}>{file}</Button>)}</div>}
       <pre className="mt-3 max-h-80 overflow-auto rounded-md border bg-muted/30 p-3 text-[11px] leading-relaxed">{diff || "正在读取差异…"}</pre>
       {diffTruncated && <p className="mt-1 text-xs text-muted-foreground">差异已截取前 64 KiB，请按文件进一步检索。</p>}
       <div className="mt-3 space-y-2">{analyses.map((item) => <div key={item.id} className="rounded-md border p-2 text-xs">
         <p className="font-medium">{item.question}</p>
-        {item.target_revision && <p className="mt-1 font-mono text-muted-foreground">任务 {item.task_id} · 版本 {item.target_revision.slice(0, 12)}</p>}
-        <p className="mt-1 text-muted-foreground">{item.conclusion || "待进一步分析"}</p>
+        <p className="mt-1 text-muted-foreground">{item.conclusion || (item.state === "failed" ? item.last_error || "分析失败，可重试" : "正在分析，结果会自动更新")}</p>
       </div>)}</div>
       <div className="mt-3 flex gap-2"><Input value={question} onChange={(event) => setQuestion(event.target.value)}
         placeholder="继续深查：例如检查同一鉴权函数的其他调用者" aria-label="深入分析问题" />
-        <Button type="button" variant="secondary" disabled={busy || question.trim().length < 5} onClick={() => void requestAnalysis()}>留存问题</Button></div>
+        <Button type="button" variant="secondary" disabled={busy || question.trim().length < 5} onClick={() => void requestAnalysis()}>启动深入分析</Button></div>
     </div>}
   </section>;
 }

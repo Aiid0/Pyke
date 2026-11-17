@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/cgi"
@@ -9,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -65,9 +65,13 @@ func TestHistoryCommitCheckpointAndDedup(t *testing.T) {
 	if _, err = s.m.pg.Exec(`INSERT INTO project_history_queue(project_id,commit_sha) VALUES($1,$2)`, p.ID, second); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.indexHistoryCommit(context.Background(),p.ID,repo,second);err!=nil{t.Fatal(err)}
+	if err = s.indexHistoryCommit(context.Background(), p.ID, repo, second); err != nil {
+		t.Fatal(err)
+	}
 	var checkpoint int
-	if err=s.m.pg.QueryRow(`SELECT count(*) FROM project_history_queue WHERE project_id=$1`,p.ID).Scan(&checkpoint);err!=nil||checkpoint!=1{t.Fatalf("checkpoint queue=%d: %v",checkpoint,err)}
+	if err = s.m.pg.QueryRow(`SELECT count(*) FROM project_history_queue WHERE project_id=$1`, p.ID).Scan(&checkpoint); err != nil || checkpoint != 1 {
+		t.Fatalf("checkpoint queue=%d: %v", checkpoint, err)
+	}
 	for _, sha := range []string{first, second} {
 		if err = s.indexHistoryCommit(context.Background(), p.ID, repo, sha); err != nil {
 			t.Fatal(err)
@@ -105,10 +109,73 @@ func TestHistoryCommitCheckpointAndDedup(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "authorize") {
 		t.Fatalf("diff endpoint: %d %s", w.Code, w.Body.String())
 	}
+	model := &scriptedProvider{replies: []string{"安全约束：检查归属。\n待验证线索：检查其他调用者。"}}
+	s.cfgMu.Lock()
+	s.llmProv, s.llmOn = model, true
+	s.cfgMu.Unlock()
+	endpoint := "/api/projects/" + p.ID + "/history/commits/" + second + "/analyses"
+	body := `{"question":"检查其他调用者是否遗漏归属校验","idempotency_key":"same-request"}`
+	var queued struct {
+		ID int64 `json:"id"`
+	}
+	for i := 0; i < 2; i++ {
+		w = projectRequest(t, s, token, http.MethodPost, endpoint, "application/json", strings.NewReader(body))
+		if w.Code != http.StatusAccepted {
+			t.Fatalf("enqueue: %d %s", w.Code, w.Body.String())
+		}
+		var response struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			queued = response
+		} else if response.ID != queued.ID {
+			t.Fatalf("duplicate analysis: %d != %d", response.ID, queued.ID)
+		}
+	}
+	job, err := s.claimHistoryAnalysis()
+	if err != nil || job == nil || job.ID != queued.ID {
+		t.Fatalf("claim: %+v %v", job, err)
+	}
+	s.performHistoryAnalysis(context.Background(), model, *job)
+	var state, conclusion, depth string
+	var taskID sql.NullInt64
+	if err := s.m.pg.QueryRow(`SELECT state,conclusion,task_id FROM project_fix_analysis WHERE id=$1`, job.ID).Scan(&state, &conclusion, &taskID); err != nil {
+		t.Fatal(err)
+	}
+	if state != "done" || !strings.Contains(conclusion, "归属") || taskID.Valid {
+		t.Fatalf("analysis: state=%s conclusion=%q task=%v", state, conclusion, taskID)
+	}
+	if err := s.m.pg.QueryRow(`SELECT depth FROM project_fix_candidates WHERE project_id=$1 AND primary_sha=$2`, p.ID, second).Scan(&depth); err != nil || depth != "deep" {
+		t.Fatalf("candidate depth=%s: %v", depth, err)
+	}
+	w = projectRequest(t, s, token, http.MethodGet, endpoint, "", nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "检查其他调用者") {
+		t.Fatalf("saved analysis: %d %s", w.Code, w.Body.String())
+	}
+	w = projectRequest(t, s, token, http.MethodPost, endpoint, "application/json", strings.NewReader(`{"question":"继续检查异常处理路径是否缺少校验","idempotency_key":"next-round"}`))
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("second round: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := s.m.pg.Exec(`UPDATE project_fix_analysis SET state='running',job_id='interrupted',lease_until=now()-interval '1 minute'
+		WHERE project_id=$1 AND analysis_key='next-round'`, p.ID); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := s.claimHistoryAnalysis()
+	if err != nil || resumed == nil || resumed.JobID == "interrupted" {
+		t.Fatalf("resume: %+v %v", resumed, err)
+	}
+	s.performHistoryAnalysis(context.Background(), model, *resumed)
+	var rounds int
+	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_fix_analysis WHERE project_id=$1 AND commit_sha=$2 AND state='done'`, p.ID, second).Scan(&rounds); err != nil || rounds != 2 {
+		t.Fatalf("saved rounds=%d: %v", rounds, err)
+	}
 }
 
 func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
-	s, auth := projectTestServer(t)
+	s, _ := projectTestServer(t)
 	root := t.TempDir()
 	work := filepath.Join(root, "work")
 	git := func(args ...string) string {
@@ -174,38 +241,7 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 	if got := count(); got != 2 {
 		t.Fatalf("initial indexed=%d", got)
 	}
-	source := filepath.Join(s.m.dir, "projects", p.ID, "source")
-	if err := os.MkdirAll(source, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(source, "handler.go"), []byte("func Handle() { authorize(user, owner) }\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	createTask := func() *Task {
-		t.Helper()
-		body, _ := json.Marshal(map[string]any{"name": "history task", "description": "review fixed source", "goal": "check previous fix", "project_id": p.ID})
-		w := projectRequest(t, s, auth, http.MethodPost, "/api/tasks", "application/json", strings.NewReader(string(body)))
-		if w.Code != http.StatusCreated {
-			t.Fatalf("create task: %d %s", w.Code, w.Body.String())
-		}
-		var dto TaskDTO
-		if err := json.Unmarshal(w.Body.Bytes(), &dto); err != nil {
-			t.Fatal(err)
-		}
-		id, err := strconv.ParseInt(dto.ID, 10, 64)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = s.m.pg.DeleteTask(id) })
-		task := s.m.ResolveTask(dto.ID)
-		if task == nil {
-			t.Fatal("created task missing")
-		}
-		return task
-	}
-	oldTask := createTask()
 	write("func Handle() { authorize(user, owner); validate(input) }\n", "follow-up")
-	third := git("-C", work, "rev-parse", "HEAD")
 	git("-C", work, "push", "-q", bare, "main")
 	sync()
 	if got := count(); got != 3 {
@@ -227,28 +263,6 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 	}
 	if !orphaned || !rewritten {
 		t.Fatalf("force push: orphaned=%t rewritten=%t", orphaned, rewritten)
-	}
-	oldLead, err := oldTask.Store.GetTaskFixLead(second)
-	if err != nil || oldLead == nil {
-		t.Fatalf("old task lost its fixed commit: %+v %v", oldLead, err)
-	}
-	if newer, err := oldTask.Store.GetTaskFixLead(third); err != nil || newer != nil {
-		t.Fatalf("newer commit leaked into old task: %+v %v", newer, err)
-	}
-	if _, err := oldTask.Store.RecordTaskFixAnalysis(second, "检查同一鉴权函数的平行入口", "当前快照仅有一个入口，未见可达旁路", json.RawMessage(`{"path":"handler.go"}`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := oldTask.Store.SetTaskFixVerdict(second, "ruled_out", "当前快照仅有一个入口，未找到可达旁路", 0); err != nil {
-		t.Fatal(err)
-	}
-	nextTask := createTask()
-	nextLead, err := nextTask.Store.GetTaskFixLead(second)
-	if err != nil || nextLead == nil || nextLead.VerificationState != "unverified" {
-		t.Fatalf("task verdict leaked: %+v %v", nextLead, err)
-	}
-	shared, err := nextTask.Store.TaskFixAnalyses(second)
-	if err != nil || len(shared) == 0 {
-		t.Fatalf("project analysis not reusable: %v %v", shared, err)
 	}
 	config, err := os.ReadFile(filepath.Join(s.historyDir(p.ID), "config"))
 	if err != nil {

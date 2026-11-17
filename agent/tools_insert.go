@@ -709,7 +709,6 @@ func splitLines(s string) []string {
 // WorkerTools returns the tool set for a work agent.
 func (t *ToolSet) WorkerTools() []actool.CoreTool {
 	return []actool.CoreTool{
-		t.searchFixCandidates(), t.getFixCandidate(), t.getCommitDiff(), t.recordFixAnalysis(), t.setFixLeadVerdict(),
 		// list_findings 保留：报漏洞前先查本任务已确认漏洞，避免重复上报同一漏洞。
 		t.listFindings(),
 		t.addFinding(), t.recordFact(),
@@ -769,7 +768,6 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 // MainAgentTools returns the human-interface tool set.
 func (t *ToolSet) MainAgentTools() []actool.CoreTool {
 	return []actool.CoreTool{
-		t.searchFixCandidates(), t.getFixCandidate(), t.getCommitDiff(), t.recordFixAnalysis(), t.setFixLeadVerdict(),
 		t.graphOverview(), t.listFindings(), t.listFacts(), t.nodeDetail(),
 		t.expandDigest(), // cold-digest §6.1
 		// list_worker_traces：work 索引（intent_id+summary+state），先发现再看

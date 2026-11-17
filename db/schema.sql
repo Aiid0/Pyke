@@ -593,12 +593,21 @@ CREATE TABLE IF NOT EXISTS project_fix_analysis (
     conclusion TEXT NOT NULL DEFAULT '',
     evidence JSONB NOT NULL DEFAULT '{}',
     state TEXT NOT NULL DEFAULT 'pending',
+    analysis_key TEXT NOT NULL DEFAULT '',
+    job_id TEXT NOT NULL DEFAULT '',
+    lease_until TIMESTAMPTZ,
+    last_error TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     FOREIGN KEY (project_id, commit_sha) REFERENCES project_history_commits(project_id, commit_sha) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_project_fix_analysis_commit ON project_fix_analysis(project_id, commit_sha, id DESC);
 ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS target_revision TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS analysis_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS job_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
+ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_fix_analysis_key ON project_fix_analysis(project_id,analysis_key) WHERE analysis_key<>'';
 
 CREATE TABLE IF NOT EXISTS tasks (
     id             BIGSERIAL PRIMARY KEY,

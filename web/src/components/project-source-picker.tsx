@@ -11,7 +11,6 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/api";
 import type { ImportedProject } from "@/lib/types";
-import { ProjectHistoryPanel } from "@/components/project-history-panel";
 
 type SourceMode = "none" | "existing" | "git" | "zip" | "directory";
 
@@ -137,7 +136,6 @@ export function ProjectSourcePicker({ value, onChange, onBusyChange, onRequiredC
         <p className="text-muted-foreground text-xs">{value.file_count} 个文件{value.branch ? ` · ${value.branch}` : ""}{value.revision ? ` · ${value.revision.slice(0, 12)}` : ""}</p>
         <p className="text-muted-foreground text-xs">创建任务时生成独立源码快照，后续会话持续使用该项目。</p>
       </div>}
-      {value?.source_type === "git" && <ProjectHistoryPanel key={value.id} project={value} />}
     </Field>
   );
 }

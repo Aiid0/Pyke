@@ -30,7 +30,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArtifactDataViewerDialog } from "@/components/artifact-data-viewer";
 import { ZoomableImageDialog } from "@/components/zoomable-image-dialog";
-import { ProjectHistoryPanel } from "@/components/project-history-panel";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Progress } from "@/components/ui/progress";
@@ -456,7 +455,6 @@ export function OverviewTab({ taskId }: { taskId: string }) {
           <p className="text-muted-foreground text-xs">当前任务使用独立源码快照，重置会话、继续执行和归档恢复均保留项目绑定。</p>
         </CardContent>
       </Card>}
-      {task?.project?.source_type === "git" && <ProjectHistoryPanel key={task.project.id} project={task.project} taskId={String(taskId)} />}
       {/* 原始任务描述与目标(创建时填写的),置顶便于随时回看。 */}
       <Card>
         <CardHeader>

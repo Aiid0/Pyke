@@ -285,6 +285,9 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	s.restoreTaskRuntimes()
 	go s.reconcileConcurrency()
 	s.startTaskArchiveWorker()
+	if m.pg != nil {
+		go s.runHistoryAnalysisQueue()
+	}
 	// 让特权安装助手跟上主程序版本：它装在 root 拥有的 /usr/local/bin，
 	// 主服务写不进去，只能由它自己换装——这里只负责发现版本不一致并通知。
 	s.StartHostdReconcile()
@@ -730,7 +733,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects/{id}/history/commits", s.historyCommits)
 	mux.HandleFunc("GET /api/projects/{id}/history/commits/{sha}/diff", s.historyDiff)
 	mux.HandleFunc("GET /api/projects/{id}/history/commits/{sha}/analyses", s.historyAnalyses)
-	mux.HandleFunc("POST /api/projects/{id}/history/commits/{sha}/analyses", s.historyAnalyses)
+	mux.HandleFunc("POST /api/projects/{id}/history/commits/{sha}/analyses", s.requestHistoryAnalysis)
 	mux.HandleFunc("GET /api/task-templates", s.pgListTaskTemplates)
 	mux.HandleFunc("POST /api/task-templates", s.pgCreateTaskTemplate)
 	mux.HandleFunc("PATCH /api/task-templates/{id}", s.pgUpdateTaskTemplate)

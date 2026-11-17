@@ -41,19 +41,17 @@ type historyStatus struct {
 }
 
 type historyCommit struct {
-	SHA               string    `json:"commit_sha"`
-	Parents           []string  `json:"parents"`
-	Authored          time.Time `json:"authored_at"`
-	Subject           string    `json:"subject"`
-	Files             []string  `json:"files"`
-	Score             int       `json:"score"`
-	Reasons           []string  `json:"reasons"`
-	Orphaned          bool      `json:"orphaned"`
-	CandidateID       int64     `json:"candidate_id,omitempty"`
-	CandidateState    string    `json:"candidate_state,omitempty"`
-	Depth             string    `json:"depth,omitempty"`
-	VerificationState string    `json:"verification_state,omitempty"`
-	VerdictNote       string    `json:"verdict_note,omitempty"`
+	SHA            string    `json:"commit_sha"`
+	Parents        []string  `json:"parents"`
+	Authored       time.Time `json:"authored_at"`
+	Subject        string    `json:"subject"`
+	Files          []string  `json:"files"`
+	Score          int       `json:"score"`
+	Reasons        []string  `json:"reasons"`
+	Orphaned       bool      `json:"orphaned"`
+	CandidateID    int64     `json:"candidate_id,omitempty"`
+	CandidateState string    `json:"candidate_state,omitempty"`
+	Depth          string    `json:"depth,omitempty"`
 }
 
 func (s *Server) historyProject(w http.ResponseWriter, r *http.Request) *db.Project {
@@ -513,33 +511,6 @@ func historyDiffScore(diff string) (int, []string) {
 	return 0, nil
 }
 
-func (s *Server) historyTaskRevision(w http.ResponseWriter, r *http.Request, projectID string) (string, bool) {
-	value := r.URL.Query().Get("task_id")
-	if value == "" {
-		return "", true
-	}
-	id, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || id <= 0 {
-		writeErr(w, 400, "任务编号无效")
-		return "", false
-	}
-	task, err := s.m.pg.GetTask(id)
-	if err != nil || task == nil || task.Project == nil || task.Project.ID != projectID || !historySHAPattern.MatchString(task.Project.Revision) {
-		writeErr(w, 403, "任务未绑定该项目的 Git 版本")
-		return "", false
-	}
-	var indexed bool
-	if err = s.m.pg.QueryRow(`SELECT EXISTS(SELECT 1 FROM project_history_commits WHERE project_id=$1 AND commit_sha=$2)`, projectID, task.Project.Revision).Scan(&indexed); err != nil {
-		writeErr(w, 500, "无法确认任务源码版本")
-		return "", false
-	}
-	if !indexed {
-		writeErr(w, 409, "任务目标提交尚未进入历史索引，请继续同步项目历史")
-		return "", false
-	}
-	return task.Project.Revision, true
-}
-
 const historyReachableSQL = `WITH RECURSIVE reachable(sha) AS (
 	SELECT $2::text UNION
 	SELECT parent.sha FROM reachable r JOIN project_history_commits c ON c.project_id=$1 AND c.commit_sha=r.sha
@@ -549,10 +520,6 @@ const historyReachableSQL = `WITH RECURSIVE reachable(sha) AS (
 func (s *Server) historyCommits(w http.ResponseWriter, r *http.Request) {
 	p := s.historyProject(w, r)
 	if p == nil {
-		return
-	}
-	revision, ok := s.historyTaskRevision(w, r, p.ID)
-	if !ok {
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -589,25 +556,11 @@ func (s *Server) historyCommits(w http.ResponseWriter, r *http.Request) {
 	if to != "" {
 		toDate = to
 	}
-	var rows *sql.Rows
-	var err error
-	if revision == "" {
-		rows, err = s.m.pg.Query(`SELECT c.commit_sha,array_to_json(c.parents)::text,c.authored_at,c.subject,array_to_json(c.files)::text,c.score,array_to_json(c.reasons)::text,c.orphaned,k.id,k.state,k.depth,''::text,''::text
+	rows, err := s.m.pg.Query(`SELECT c.commit_sha,array_to_json(c.parents)::text,c.authored_at,c.subject,array_to_json(c.files)::text,c.score,array_to_json(c.reasons)::text,c.orphaned,k.id,k.state,k.depth
 			FROM project_history_commits c LEFT JOIN project_fix_candidates k ON k.project_id=c.project_id AND k.primary_sha=c.commit_sha
 			WHERE c.project_id=$1 AND ($2=0 OR k.id IS NOT NULL) AND ($5='' OR c.commit_sha=$5)
 			AND ($6::date IS NULL OR c.authored_at >= $6::date) AND ($7::date IS NULL OR c.authored_at < $7::date+interval '1 day')
 			ORDER BY c.score DESC,c.authored_at DESC,c.commit_sha LIMIT $3 OFFSET $4`, p.ID, candidateOnly, limit, offset, sha, fromDate, toDate)
-	} else {
-		taskID, _ := strconv.ParseInt(r.URL.Query().Get("task_id"), 10, 64)
-		rows, err = s.m.pg.Query(historyReachableSQL+`SELECT c.commit_sha,array_to_json(c.parents)::text,c.authored_at,c.subject,array_to_json(c.files)::text,c.score,array_to_json(c.reasons)::text,c.orphaned,k.id,k.state,k.depth,
-			COALESCE(l.verification_state,'unverified'),COALESCE(l.verdict_note,'')
-			FROM reachable r JOIN project_history_commits c ON c.project_id=$1 AND c.commit_sha=r.sha
-			LEFT JOIN project_fix_candidates k ON k.project_id=c.project_id AND k.primary_sha=c.commit_sha
-			LEFT JOIN task_fix_leads l ON l.candidate_id=k.id AND l.task_id=$9 AND l.target_revision=$2
-			WHERE ($3=0 OR k.id IS NOT NULL) AND ($6='' OR c.commit_sha=$6)
-			AND ($7::date IS NULL OR c.authored_at >= $7::date) AND ($8::date IS NULL OR c.authored_at < $8::date+interval '1 day')
-			ORDER BY c.score DESC,c.authored_at DESC,c.commit_sha LIMIT $4 OFFSET $5`, p.ID, revision, candidateOnly, limit, offset, sha, fromDate, toDate, taskID)
-	}
 	if err != nil {
 		writeErr(w, 500, "无法读取提交")
 		return
@@ -620,7 +573,7 @@ func (s *Server) historyCommits(w http.ResponseWriter, r *http.Request) {
 		var candidateID sql.NullInt64
 		var state, depth sql.NullString
 		var parentsJSON, filesJSON, reasonsJSON string
-		if err = rows.Scan(&c.SHA, &parentsJSON, &at, &c.Subject, &filesJSON, &c.Score, &reasonsJSON, &c.Orphaned, &candidateID, &state, &depth, &c.VerificationState, &c.VerdictNote); err != nil {
+		if err = rows.Scan(&c.SHA, &parentsJSON, &at, &c.Subject, &filesJSON, &c.Score, &reasonsJSON, &c.Orphaned, &candidateID, &state, &depth); err != nil {
 			writeErr(w, 500, "提交数据损坏")
 			return
 		}
@@ -648,10 +601,6 @@ func (s *Server) historyCommits(w http.ResponseWriter, r *http.Request) {
 func (s *Server) historyDiff(w http.ResponseWriter, r *http.Request) {
 	p := s.historyProject(w, r)
 	if p == nil {
-		return
-	}
-	revision, ok := s.historyTaskRevision(w, r, p.ID)
-	if !ok {
 		return
 	}
 	sha := r.PathValue("sha")
@@ -683,13 +632,6 @@ func (s *Server) historyDiff(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if revision != "" {
-		var exists bool
-		if err := s.m.pg.QueryRow(historyReachableSQL+`SELECT EXISTS(SELECT 1 FROM reachable WHERE sha=$3)`, p.ID, revision, sha).Scan(&exists); err != nil || !exists {
-			writeErr(w, 403, "提交不适用于任务源码版本")
-			return
-		}
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	args := []string{"show", "--format=", "--diff-merges=first-parent", "--no-ext-diff", "--no-renames", "--unified=3", sha}
@@ -714,99 +656,8 @@ func (s *Server) historyAnalyses(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "提交编号无效")
 		return
 	}
-	if r.Method == http.MethodPost {
-		var input struct {
-			Question   string         `json:"question"`
-			Conclusion string         `json:"conclusion"`
-			Evidence   map[string]any `json:"evidence"`
-			TaskID     *int64         `json:"task_id"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, 32768)
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil || len(input.Question) < 5 || len(input.Question) > 2000 || len(input.Conclusion) > 12000 {
-			writeErr(w, 400, "分析内容无效")
-			return
-		}
-		if input.Evidence == nil {
-			input.Evidence = map[string]any{}
-		}
-		taskRevision := ""
-		if input.TaskID != nil {
-			t, err := s.m.pg.GetTask(*input.TaskID)
-			if err != nil || t == nil || t.Project == nil || t.Project.ID != p.ID {
-				writeErr(w, 403, "任务未绑定该项目")
-				return
-			}
-			var reachable bool
-			err = s.m.pg.QueryRow(historyReachableSQL+`SELECT EXISTS(SELECT 1 FROM reachable WHERE sha=$3)`, p.ID, t.Project.Revision, sha).Scan(&reachable)
-			if err != nil || !reachable {
-				writeErr(w, 403, "提交不适用于任务源码版本")
-				return
-			}
-			taskRevision = t.Project.Revision
-		}
-		evidence, _ := json.Marshal(input.Evidence)
-		state := "pending"
-		if strings.TrimSpace(input.Conclusion) != "" {
-			state = "analyzed"
-		}
-		var id int64
-		tx, err := s.m.pg.BeginTx(r.Context(), nil)
-		if err != nil {
-			writeErr(w, 500, "无法保存分析请求")
-			return
-		}
-		defer tx.Rollback()
-		if _, err = tx.Exec(`INSERT INTO project_fix_candidates(project_id,primary_sha,score,reasons)
-			SELECT project_id,commit_sha,score,CASE WHEN score=0 THEN ARRAY['人工指定提交']::text[] ELSE reasons END
-			FROM project_history_commits WHERE project_id=$1 AND commit_sha=$2
-			ON CONFLICT(project_id,primary_sha) DO NOTHING`, p.ID, sha); err != nil {
-			writeErr(w, 500, "无法建立候选卡片")
-			return
-		}
-		if input.TaskID != nil {
-			if _, err = tx.Exec(`INSERT INTO task_fix_leads(task_id,candidate_id,target_revision)
-				SELECT $1,id,$4 FROM project_fix_candidates WHERE project_id=$2 AND primary_sha=$3
-				ON CONFLICT(task_id,candidate_id,target_revision) DO NOTHING`, *input.TaskID, p.ID, sha, taskRevision); err != nil {
-				writeErr(w, 500, "无法关联任务线索")
-				return
-			}
-		}
-		err = tx.QueryRow(`INSERT INTO project_fix_analysis(project_id,commit_sha,task_id,target_revision,question,conclusion,evidence,state)
-			VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, p.ID, sha, input.TaskID, taskRevision, input.Question, input.Conclusion, evidence, state).Scan(&id)
-		if err != nil {
-			writeErr(w, 404, "提交未索引或分析无法保存")
-			return
-		}
-		if state == "analyzed" {
-			if _, err = tx.Exec(`UPDATE project_fix_candidates SET state='analyzed',depth='deep',current_summary=$3,updated_at=now()
-			WHERE project_id=$1 AND primary_sha=$2`, p.ID, sha, input.Conclusion); err != nil {
-				writeErr(w, 500, "无法更新候选状态")
-				return
-			}
-		}
-		if input.TaskID != nil && state == "pending" {
-			hint := "请按历史修复线索深入分析提交 " + sha + "：" + strings.TrimSpace(input.Question) + "。先用 get_fix_candidate/get_commit_diff 核对，再检查当前任务源码中的平行入口和反证；结论用 record_fix_analysis 留存，实际验证另写任务事实。"
-			payload, _ := json.Marshal(map[string]any{"text": hint, "analysis_request_id": id, "commit_sha": sha})
-			if _, err = tx.Exec(`INSERT INTO exploration_nodes(exploration_id,kind,payload,priority,state,origin)
-				SELECT exploration_id,'hint',$2,0,'active','human' FROM tasks WHERE id=$1 AND deleted_at IS NULL`, *input.TaskID, payload); err != nil {
-				writeErr(w, 500, "无法向任务提交分析请求")
-				return
-			}
-		}
-		if err = tx.Commit(); err != nil {
-			writeErr(w, 500, "无法保存分析请求")
-			return
-		}
-		if input.TaskID != nil && state == "pending" {
-			if task := s.m.ResolveTask(strconv.FormatInt(*input.TaskID, 10)); task != nil {
-				task.NotifyHint([]string{strings.TrimSpace(input.Question)})
-			}
-		}
-		writeJSON(w, 201, map[string]any{"id": id, "state": state})
-		return
-	}
-	rows, err := s.m.pg.Query(`SELECT id,task_id,target_revision,question,conclusion,evidence,state,created_at FROM project_fix_analysis
-		WHERE project_id=$1 AND commit_sha=$2 ORDER BY id DESC LIMIT 100`, p.ID, sha)
+	rows, err := s.m.pg.Query(`SELECT id,question,conclusion,evidence,state,last_error,created_at FROM project_fix_analysis
+		WHERE project_id=$1 AND commit_sha=$2 AND task_id IS NULL ORDER BY id DESC LIMIT 100`, p.ID, sha)
 	if err != nil {
 		writeErr(w, 500, "无法读取分析")
 		return
@@ -815,18 +666,14 @@ func (s *Server) historyAnalyses(w http.ResponseWriter, r *http.Request) {
 	items := []map[string]any{}
 	for rows.Next() {
 		var id int64
-		var taskID sql.NullInt64
-		var targetRevision, question, conclusion, state string
+		var question, conclusion, state, lastError string
 		var evidence json.RawMessage
 		var at time.Time
-		if err := rows.Scan(&id, &taskID, &targetRevision, &question, &conclusion, &evidence, &state, &at); err != nil {
+		if err := rows.Scan(&id, &question, &conclusion, &evidence, &state, &lastError, &at); err != nil {
 			writeErr(w, 500, "分析数据损坏")
 			return
 		}
-		item := map[string]any{"id": id, "target_revision": targetRevision, "question": question, "conclusion": conclusion, "evidence": evidence, "state": state, "created_at": at}
-		if taskID.Valid {
-			item["task_id"] = taskID.Int64
-		}
+		item := map[string]any{"id": id, "question": question, "conclusion": conclusion, "evidence": evidence, "state": state, "last_error": lastError, "created_at": at}
 		items = append(items, item)
 	}
 	writeJSON(w, 200, map[string]any{"items": items})
