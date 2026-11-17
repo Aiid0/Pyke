@@ -131,7 +131,10 @@ def main():
     if not any(corpus.iterdir()):
         event('state', state='failed', reason='seed_corpus_empty')
         return
-    common = [str(target), '-timeout=' + str(cfg['timeout']), '-max_len=' + str(cfg['max_input']),
+    # LibAFL's libFuzzer compatibility runtime does not implement every
+    # upstream libFuzzer flag (notably -max_len); input size is enforced while
+    # importing the corpus and collecting artifacts above.
+    common = [str(target), '-timeout=' + str(cfg['timeout']),
               '-artifact_prefix=' + str(artifacts) + '/']
     if cfg.get('dictionary'):
         common.append('-dict=' + str(source / cfg['dictionary']))
