@@ -9,8 +9,10 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/cgi"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -46,6 +48,92 @@ func projectRequest(t *testing.T, s *Server, token, method, route, contentType s
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	return w
+}
+
+func TestGitProjectImportRetainsCommitHistory(t *testing.T) {
+	s, authToken := projectTestServer(t)
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Project Test", "GIT_AUTHOR_EMAIL=test@example.invalid", "GIT_COMMITTER_NAME=Project Test", "GIT_COMMITTER_EMAIL=test@example.invalid")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	git("init", "-q", "-b", "main", work)
+	if err := os.WriteFile(filepath.Join(work, "README.md"), []byte("first"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("-C", work, "add", "README.md")
+	git("-C", work, "commit", "-qm", "first")
+	if err := os.WriteFile(filepath.Join(work, "README.md"), []byte("second"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("-C", work, "commit", "-qam", "second")
+	for i := 0; i < 205; i++ {
+		git("-C", work, "commit", "--allow-empty", "-qm", fmt.Sprintf("ordinary %d", i))
+	}
+	bare := filepath.Join(root, "repo.git")
+	git("clone", "-q", "--bare", work, bare)
+	backend := filepath.Join(git("--exec-path"), "git-http-backend")
+	if _, err := os.Stat(backend); err != nil {
+		t.Skip(err)
+	}
+	const gitToken = "import-history-token"
+	cgiHandler := &cgi.Handler{Path: backend, Dir: root, Env: []string{"GIT_PROJECT_ROOT=" + root, "GIT_HTTP_EXPORT_ALL=1"}}
+	service := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user, password, ok := r.BasicAuth()
+		if !ok || user != "tester" || password != gitToken {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		cgiHandler.ServeHTTP(w, r)
+	}))
+	defer service.Close()
+	payload, _ := json.Marshal(map[string]string{"name": "Git history import", "repository_url": service.URL + "/repo.git", "branch": "main", "username": "tester", "token": gitToken})
+	w := projectRequest(t, s, authToken, http.MethodPost, "/api/projects/import", "application/json", bytes.NewReader(payload))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("import status=%d body=%s", w.Code, w.Body.String())
+	}
+	var imported db.Project
+	if err := json.Unmarshal(w.Body.Bytes(), &imported); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = s.m.pg.Exec(`DELETE FROM projects WHERE id=$1`, imported.ID) })
+	historyDir := s.historyDir(imported.ID)
+	if got := git("-C", historyDir, "rev-list", "--count", "HEAD"); got != "200" {
+		t.Fatalf("imported commits=%s, want initial 200", got)
+	}
+	if got := git("-C", historyDir, "rev-parse", "--is-bare-repository"); got != "true" {
+		t.Fatalf("history repository bare=%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(s.m.dir, "projects", imported.ID, "source", ".git")); !os.IsNotExist(err) {
+		t.Fatalf("Git metadata entered source snapshot: %v", err)
+	}
+	config, err := os.ReadFile(filepath.Join(historyDir, "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(config), gitToken) || strings.Contains(string(config), "extraHeader") {
+		t.Fatal("Git credentials persisted in project history")
+	}
+	if _, err := historyGit(context.Background(), historyDir, "tester", gitToken, "fetch", "--quiet", "--no-tags", "--unshallow", "--", service.URL+"/repo.git", "main"); err != nil {
+		t.Fatalf("complete local history: %v", err)
+	}
+	if err := s.runHistorySync(context.Background(), &imported, "tester", gitToken); err != nil {
+		t.Fatalf("continue from imported Git objects: %v", err)
+	}
+	var indexed int
+	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_history_commits WHERE project_id=$1`, imported.ID).Scan(&indexed); err != nil || indexed != 207 {
+		t.Fatalf("indexed commits=%d: %v", indexed, err)
+	}
+	if got := git("-C", historyDir, "rev-parse", "--is-shallow-repository"); got != "false" {
+		t.Fatalf("complete imported history was shortened: shallow=%s", got)
+	}
 }
 
 func uploadProjectFixture(t *testing.T, s *Server, token string, directory bool) *db.Project {

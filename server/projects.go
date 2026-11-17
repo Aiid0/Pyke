@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -180,7 +181,7 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.FileCount, p.TotalBytes = stats.Files, stats.Bytes
-	// Only publish the validated source tree, never clone credentials or .git.
+	// Keep Git objects outside the validated source tree and task snapshots.
 	final := filepath.Join(root, p.ID)
 	if err := os.Mkdir(final, 0o755); err != nil {
 		writeErr(w, 500, "无法保存项目")
@@ -190,6 +191,13 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 		_ = os.RemoveAll(final)
 		writeErr(w, 500, "无法保存项目文件")
 		return
+	}
+	if p.SourceType == "git" {
+		if err := seedProjectHistory(r.Context(), filepath.Join(stage, "clone", ".git"), filepath.Join(final, "history.git")); err != nil {
+			_ = os.RemoveAll(final)
+			writeErr(w, 500, "无法保存项目 Git 历史")
+			return
+		}
 	}
 	created, err := s.m.pg.CreateProject(p)
 	if err != nil {
@@ -201,6 +209,21 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 		_, _ = s.startHistorySync(created, historyUsername, historyToken)
 	}
 	writeJSON(w, http.StatusCreated, projectDTO{Project: created, Directory: filepath.Join(final, "source")})
+}
+
+// seedProjectHistory retains imported commit objects separately from the
+// source snapshot. The transient clone uses environment-only credentials.
+func seedProjectHistory(ctx context.Context, gitDir, dest string) error {
+	if _, err := historyGit(ctx, gitDir, "", "", "config", "core.bare", "true"); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(gitDir, "index")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.Chmod(gitDir, 0700); err != nil {
+		return err
+	}
+	return os.Rename(gitDir, dest)
 }
 
 func flattenProjectRoot(root string) error {

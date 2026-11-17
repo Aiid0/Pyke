@@ -298,7 +298,9 @@ func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, to
 		var count int
 		_ = s.m.pg.QueryRow(`SELECT count(*) FROM project_history_commits WHERE project_id=$1`, p.ID).Scan(&count)
 		if count == 0 {
-			args = append(args, "--depth=200")
+			if _, headErr := historyGit(ctx, dir, "", "", "rev-parse", "--verify", "HEAD^{commit}"); headErr != nil {
+				args = append(args, "--depth=200")
+			}
 		}
 	}
 	branch := p.Branch

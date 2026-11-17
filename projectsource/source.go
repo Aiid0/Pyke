@@ -194,7 +194,7 @@ func Clone(ctx context.Context, dest, remote, branch, username, token string) (s
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	args := []string{"-c", "core.hooksPath=" + os.DevNull, "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "clone", "--quiet", "--depth=1", "--single-branch", "--no-tags"}
+	args := []string{"-c", "core.hooksPath=" + os.DevNull, "-c", "protocol.file.allow=never", "-c", "protocol.ext.allow=never", "clone", "--quiet", "--depth=200", "--single-branch", "--no-tags"}
 	if branch != "" {
 		args = append(args, "--branch", branch)
 	}
