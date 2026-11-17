@@ -108,18 +108,33 @@ func TestGitProjectImportRetainsCommitHistory(t *testing.T) {
 	if got := git("-C", historyDir, "rev-list", "--count", "HEAD"); got != "200" {
 		t.Fatalf("imported commits=%s, want initial 200", got)
 	}
-	if got := git("-C", historyDir, "rev-parse", "--is-bare-repository"); got != "true" {
-		t.Fatalf("history repository bare=%s", got)
+	if got := git("-C", historyDir, "rev-parse", "--is-bare-repository"); got != "false" {
+		t.Fatalf("project repository bare=%s", got)
 	}
-	if _, err := os.Stat(filepath.Join(s.m.dir, "projects", imported.ID, "source", ".git")); !os.IsNotExist(err) {
-		t.Fatalf("Git metadata entered source snapshot: %v", err)
+	if got := git("-C", historyDir, "status", "--porcelain"); got != "" {
+		t.Fatalf("imported worktree is not clean: %s", got)
 	}
-	config, err := os.ReadFile(filepath.Join(historyDir, "config"))
+	config, err := os.ReadFile(filepath.Join(historyDir, ".git", "config"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(config), gitToken) || strings.Contains(string(config), "extraHeader") {
 		t.Fatal("Git credentials persisted in project history")
+	}
+	request, _ := json.Marshal(map[string]string{"name": "Git task", "description": "fixture", "goal": "inspect history", "project_id": imported.ID})
+	w = projectRequest(t, s, authToken, http.MethodPost, "/api/tasks", "application/json", bytes.NewReader(request))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("task status=%d body=%s", w.Code, w.Body.String())
+	}
+	var task TaskDTO
+	if err := json.Unmarshal(w.Body.Bytes(), &task); err != nil {
+		t.Fatal(err)
+	}
+	taskID, _ := strconv.ParseInt(task.ID, 10, 64)
+	t.Cleanup(func() { _ = s.m.pg.DeleteTask(taskID) })
+	taskSource := filepath.Join(s.m.dir, "tasks", task.ID, "source")
+	if got := git("-C", taskSource, "rev-list", "--count", "HEAD"); got != "200" {
+		t.Fatalf("initial task history=%s, want 200", got)
 	}
 	if _, err := historyGit(context.Background(), historyDir, "tester", gitToken, "fetch", "--quiet", "--no-tags", "--unshallow", "--", service.URL+"/repo.git", "main"); err != nil {
 		t.Fatalf("complete local history: %v", err)
@@ -133,6 +148,32 @@ func TestGitProjectImportRetainsCommitHistory(t *testing.T) {
 	}
 	if got := git("-C", historyDir, "rev-parse", "--is-shallow-repository"); got != "false" {
 		t.Fatalf("complete imported history was shortened: shallow=%s", got)
+	}
+	if got := git("-C", historyDir, "status", "--porcelain"); got != "" {
+		t.Fatalf("history sync changed project files: %s", got)
+	}
+	if err := ensureTaskGitView(context.Background(), &imported, historyDir, taskSource); err != nil {
+		t.Fatalf("refresh task history boundary: %v", err)
+	}
+	if got := git("-C", taskSource, "rev-list", "--count", "HEAD"); got != "207" {
+		t.Fatalf("task history=%s, want 207", got)
+	}
+	if got := git("-C", taskSource, "status", "--porcelain"); got != "" {
+		t.Fatalf("task worktree is not clean: %s", got)
+	}
+	alternate, err := os.ReadFile(filepath.Join(taskSource, ".git", "objects", "info", "alternates"))
+	if err != nil {
+		t.Fatalf("task Git object sharing: %v", err)
+	}
+	if filepath.IsAbs(strings.TrimSpace(string(alternate))) {
+		t.Fatal("task Git object sharing depends on an absolute host path")
+	}
+	if got := git("-C", taskSource, "remote"); got != "" {
+		t.Fatalf("task Git has remote: %s", got)
+	}
+	git("-C", taskSource, "commit", "--allow-empty", "-qm", "task only")
+	if got := git("-C", historyDir, "rev-parse", "HEAD"); got != imported.Revision {
+		t.Fatalf("task commit changed project head: %s", got)
 	}
 }
 

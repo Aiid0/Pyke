@@ -296,6 +296,15 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = s.m.pg.Exec(`DELETE FROM projects WHERE id=$1`, p.ID) })
+	projectSource := projectSourceDir(s.m.dir, p.ID)
+	if err := os.MkdirAll(projectSource, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectSource, "handler.go"), []byte("func Handle() { authorize(user, owner) }\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	legacyHistory := filepath.Join(s.m.dir, "projects", p.ID, "history.git")
+	git("clone", "-q", "--bare", work, legacyHistory)
 	sync := func() {
 		t.Helper()
 		if err := s.runHistorySync(context.Background(), p, "tester", token); err != nil {
@@ -311,6 +320,15 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 		return n
 	}
 	sync()
+	if _, err := os.Stat(filepath.Join(projectSource, ".git", "HEAD")); err != nil {
+		t.Fatalf("legacy history was not migrated: %v", err)
+	}
+	if _, err := os.Stat(legacyHistory); !os.IsNotExist(err) {
+		t.Fatalf("legacy history directory remains: %v", err)
+	}
+	if got := git("-C", projectSource, "status", "--porcelain"); got != "" {
+		t.Fatalf("migrated project status: %s", got)
+	}
 	if got := count(); got != 2 {
 		t.Fatalf("initial indexed=%d", got)
 	}
@@ -337,7 +355,7 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 	if !orphaned || !rewritten {
 		t.Fatalf("force push: orphaned=%t rewritten=%t", orphaned, rewritten)
 	}
-	config, err := os.ReadFile(filepath.Join(s.historyDir(p.ID), "config"))
+	config, err := os.ReadFile(filepath.Join(s.historyDir(p.ID), ".git", "config"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,13 +397,17 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 		git("-C", work, "commit", "--allow-empty", "-qm", fmt.Sprintf("ordinary %d", i))
 	}
 	git("-C", work, "push", "-q", bare, "main")
-	deeper, err := s.m.pg.CreateProject(db.Project{ID: uuid.NewString(), Name: "deep history", SourceType: "git", RepositoryURL: service.URL + "/repo.git", Branch: "main", FileCount: 1})
+	deepRevision := git("-C", work, "rev-parse", "HEAD")
+	deeper, err := s.m.pg.CreateProject(db.Project{ID: uuid.NewString(), Name: "deep history", SourceType: "git", RepositoryURL: service.URL + "/repo.git", Branch: "main", Revision: deepRevision, FileCount: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = s.m.pg.Exec(`DELETE FROM projects WHERE id=$1`, deeper.ID) })
 	if err := s.runHistorySync(context.Background(), deeper, "tester", token); err != nil {
 		t.Fatalf("shallow history did not deepen with import credentials: %v", err)
+	}
+	if head := git("-C", projectSourceDir(s.m.dir, deeper.ID), "rev-parse", "HEAD"); head != deepRevision {
+		t.Fatalf("old project worktree head=%s, want %s", head, deepRevision)
 	}
 	var deepCount int
 	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_history_commits WHERE project_id=$1`, deeper.ID).Scan(&deepCount); err != nil || deepCount != 204 {

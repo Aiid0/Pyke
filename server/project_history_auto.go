@@ -3,6 +3,8 @@ package server
 import (
 	"database/sql"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -12,6 +14,7 @@ import (
 func (s *Server) runAutoHistoryScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+	s.reconcileExistingTaskGitViews()
 	for {
 		s.scheduleAutoHistory()
 		select {
@@ -64,6 +67,14 @@ func (s *Server) scheduleAutoHistory() {
 				}
 			default:
 				eligible = age >= time.Minute
+			}
+			if state == "ready" || state == "interrupted" {
+				projectRoot := filepath.Join(s.m.dir, "projects", p.ID)
+				if _, statErr := os.Stat(filepath.Join(projectRoot, "source", ".git", "HEAD")); errors.Is(statErr, os.ErrNotExist) {
+					if _, legacyErr := os.Stat(filepath.Join(projectRoot, "history.git", "HEAD")); legacyErr == nil {
+						eligible = true
+					}
+				}
 			}
 		}
 		if eligible {

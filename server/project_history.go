@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -73,7 +72,7 @@ func (s *Server) historyProject(w http.ResponseWriter, r *http.Request) *db.Proj
 }
 
 func (s *Server) historyDir(projectID string) string {
-	return filepath.Join(s.m.dir, "projects", projectID, "history.git")
+	return projectSourceDir(s.m.dir, projectID)
 }
 
 // historyGit never writes credentials to the command line, Git config or log.
@@ -264,6 +263,7 @@ func (s *Server) startHistorySync(p *db.Project, username, token string) (string
 		<-heartbeatDone
 		if s.ctx.Err() == nil {
 			s.queueAutoHistoryAnalyses(p.ID)
+			s.reconcileProjectTaskGitViews(p)
 		}
 		state, message := "ready", ""
 		if err != nil {
@@ -279,15 +279,20 @@ func (s *Server) startHistorySync(p *db.Project, username, token string) (string
 
 func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, token string) error {
 	dir := s.historyDir(p.ID)
-	if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
+	if err := s.ensureProjectGit(ctx, p, username, token); err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(dir, "HEAD")); errors.Is(err, os.ErrNotExist) {
-		if err = os.MkdirAll(dir, 0700); err != nil {
-			return err
-		}
-		if _, err = historyGit(ctx, dir, "", "", "init", "--bare", "--quiet"); err != nil {
-			return errors.New("无法初始化 Git 历史库")
+	branch := p.Branch
+	if branch == "" {
+		branch = "HEAD"
+	}
+	var oldHead string
+	_ = s.m.pg.QueryRow(`SELECT head_sha FROM project_history_refs WHERE project_id=$1 AND ref_name=$2`, p.ID, branch).Scan(&oldHead)
+	if historySHAPattern.MatchString(oldHead) {
+		if _, err := historyGit(ctx, dir, "", "", "cat-file", "-e", oldHead+"^{commit}"); err == nil {
+			if _, err := historyGit(ctx, dir, "", "", "update-ref", "refs/pyke/observed/"+oldHead, oldHead); err != nil {
+				return errors.New("无法保留上一轮项目历史")
+			}
 		}
 	}
 	shallow, _ := historyGit(ctx, dir, "", "", "rev-parse", "--is-shallow-repository")
@@ -303,20 +308,20 @@ func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, to
 			}
 		}
 	}
-	branch := p.Branch
-	if branch == "" {
-		branch = "HEAD"
-	}
 	args = append(args, "--", p.RepositoryURL, branch)
 	if _, err := historyGit(ctx, dir, username, token, args...); err != nil {
 		return errors.New("Git 历史拉取失败，请检查仓库权限与网络")
+	}
+	if err := s.pinProjectRevision(ctx, p, username, token); err != nil {
+		return err
 	}
 	head, err := historyGit(ctx, dir, "", "", "rev-parse", "FETCH_HEAD")
 	if err != nil || !historySHAPattern.MatchString(head) {
 		return errors.New("Git 未返回有效提交")
 	}
-	var oldHead string
-	_ = s.m.pg.QueryRow(`SELECT head_sha FROM project_history_refs WHERE project_id=$1 AND ref_name=$2`, p.ID, branch).Scan(&oldHead)
+	if _, err := historyGit(ctx, dir, "", "", "update-ref", "refs/pyke/observed/"+head, head); err != nil {
+		return errors.New("无法保留项目历史提交")
+	}
 	rewritten := false
 	if oldHead != "" && oldHead != head {
 		_, ancestryErr := historyGit(ctx, dir, "", "", "merge-base", "--is-ancestor", oldHead, head)

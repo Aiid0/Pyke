@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -193,7 +194,7 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p.SourceType == "git" {
-		if err := seedProjectHistory(r.Context(), filepath.Join(stage, "clone", ".git"), filepath.Join(final, "history.git")); err != nil {
+		if err := seedProjectHistory(r.Context(), filepath.Join(stage, "clone", ".git"), filepath.Join(final, "source")); err != nil {
 			_ = os.RemoveAll(final)
 			writeErr(w, 500, "无法保存项目 Git 历史")
 			return
@@ -211,19 +212,20 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, projectDTO{Project: created, Directory: filepath.Join(final, "source")})
 }
 
-// seedProjectHistory retains imported commit objects separately from the
-// source snapshot. The transient clone uses environment-only credentials.
-func seedProjectHistory(ctx context.Context, gitDir, dest string) error {
-	if _, err := historyGit(ctx, gitDir, "", "", "config", "core.bare", "true"); err != nil {
-		return err
-	}
-	if err := os.Remove(filepath.Join(gitDir, "index")); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
+// seedProjectHistory gives the validated source tree the clone's Git metadata.
+// The transient clone uses environment-only credentials.
+func seedProjectHistory(ctx context.Context, gitDir, source string) error {
 	if err := os.Chmod(gitDir, 0700); err != nil {
 		return err
 	}
-	return os.Rename(gitDir, dest)
+	if err := os.Rename(gitDir, filepath.Join(source, ".git")); err != nil {
+		return err
+	}
+	head, err := historyGit(ctx, source, "", "", "rev-parse", "HEAD")
+	if err != nil || !historySHAPattern.MatchString(head) {
+		return errors.New("无法验证项目 Git 工作目录")
+	}
+	return nil
 }
 
 func flattenProjectRoot(root string) error {
@@ -274,6 +276,13 @@ func (m *Manager) prepareProjectSnapshot(opts *db.TaskCreateOptions) (func(), er
 		}
 		if err := os.Rename(filepath.Join(stage, "source"), target); err != nil {
 			return nil, err
+		}
+		if opts.Project.SourceType == "git" {
+			projectSource := filepath.Join(root, id.String(), "source")
+			if err := ensureTaskGitView(context.Background(), opts.Project, projectSource, target); err != nil {
+				// Git metadata is auxiliary; the validated source snapshot remains usable.
+				log.Printf("[project-git] task %d Git view: %v", taskID, err)
+			}
 		}
 		return func() { _ = os.RemoveAll(target); _ = os.Remove(taskDir) }, nil
 	}
