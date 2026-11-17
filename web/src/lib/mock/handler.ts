@@ -1002,6 +1002,10 @@ function parseBody(body?: BodyInit | null): Record<string, unknown> {
 }
 
 export async function mockHandle<T>(method: string, rawPath: string, body?: BodyInit | null): Promise<T> {
+  if (rawPath.startsWith("/fuzz/") || rawPath.includes("/fuzz-jobs")) {
+    const { mockFuzz } = await import("./fuzz");
+    return mockFuzz(method.toUpperCase(), rawPath.split("?")[0], parseBody(body)) as T;
+  }
   advanceMockRetests();
   await delay();
   const [path, qs] = rawPath.split("?");

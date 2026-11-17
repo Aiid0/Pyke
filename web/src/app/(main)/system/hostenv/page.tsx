@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api";
+import { FuzzEnvironment } from "@/components/fuzz-environment";
 import type { HostenvStatus, HostTool, InstallJob, ProxyCheckResult } from "@/lib/types";
 
 const TERMINAL_STATES = new Set(["done", "failed", "cancelled"]);
@@ -281,6 +282,7 @@ export default function HostEnvPage() {
 
   return (
     <div className="flex flex-col gap-4 p-4 lg:p-6">
+      <FuzzEnvironment />
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div>

@@ -2948,6 +2948,7 @@ func (t *ToolSet) listWorkerTraces() actool.CoreTool {
 // PlannerTools is the read + intent-generation + goal-judgement tool set.
 func (t *ToolSet) PlannerTools() []actool.CoreTool {
 	return []actool.CoreTool{
+		t.fuzzTool("list", true), t.fuzzTool("status", true), t.fuzzTool("results", true),
 		t.graphOverview(), t.listFindings(), t.listFacts(), t.nodeDetail(),
 		t.searchHistoryLeads(), t.getHistoryLead(),
 		// cold-digest §6.1: restore folded cold nodes (digest body → members → detail).

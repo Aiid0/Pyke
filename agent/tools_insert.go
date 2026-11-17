@@ -750,6 +750,8 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 		t.pocScaffold(),
 		// 任务级后台作业（红队版 v0.7.0 下放）：长扫描跨意图存活。
 		t.jobStart(), t.jobStatus(), t.jobOutput(), t.jobStop(),
+		t.fuzzTool("start", false), t.fuzzTool("list", true), t.fuzzTool("status", true), t.fuzzTool("results", true),
+		t.fuzzTool("stop", false), t.fuzzTool("replay", false), t.fuzzTool("analyze", false),
 		// 任务级共享脚本（红队版 v0.7.0 下放）：登录脚本/PoC 跨意图复用。
 		t.saveScript(), t.runScript(),
 		// diff_responses：对比两个响应的结构性差异（越权/可枚举/状态机三类的共同基础）。
@@ -769,6 +771,7 @@ func (t *ToolSet) WorkerTools() []actool.CoreTool {
 // MainAgentTools returns the human-interface tool set.
 func (t *ToolSet) MainAgentTools() []actool.CoreTool {
 	return []actool.CoreTool{
+		t.fuzzTool("list", true), t.fuzzTool("status", true), t.fuzzTool("results", true), t.fuzzTool("stop", false), t.fuzzTool("analyze", false),
 		t.searchHistoryLeads(), t.getHistoryLead(),
 		t.graphOverview(), t.listFindings(), t.listFacts(), t.nodeDetail(),
 		t.expandDigest(), // cold-digest §6.1

@@ -176,6 +176,12 @@ func (s *Server) pgDeleteTask(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, err.Error())
 		return
 	}
+	if s.fuzz != nil {
+		if err := s.fuzz.StopTask(drainCtx, id); err != nil {
+			writeErr(w, http.StatusConflict, "Fuzz 作业未停止，删除已取消："+err.Error())
+			return
+		}
+	}
 	result, err := s.m.DeleteTask(id, opts)
 	if err != nil {
 		var committed *taskDeleteCommittedError

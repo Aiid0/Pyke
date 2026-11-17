@@ -80,6 +80,8 @@ func guardPanic(t actool.CoreTool) actool.CoreTool { return &guardedTool{CoreToo
 // Read-only inspection tools (Read/LS/Glob/Grep) are deliberately kept: 编排 agent
 // 看 skill 目录、翻产物是合理的，能跑命令才是问题。
 var localExecToolNames = map[string]bool{
+	"fuzz_start": true,
+	"fuzz_replay": true,
 	"Bash":         true,
 	"Write":        true,
 	"Edit":         true,

@@ -164,6 +164,7 @@ func (i *Interceptor) SetReviewer(r Reviewer) {
 // 默认也进拦截——deferred 调用经 ExecuteExtraTool 中转，guard 解包后用内层名
 // 走这里；不入集的话 MCP 工具对三层闸门完全隐身（v0.4.71 前 的真实缺口）。
 var defaultEnabledTools = []string{
+	"fuzz_start", "fuzz_replay",
 	"Bash", "WebFetch", "web_search",
 	"shell_open", "shell_send",
 	"listener_start", "listener_stop",

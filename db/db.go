@@ -292,6 +292,14 @@ ON CONFLICT (name) DO NOTHING`,
 	if err := d.seedBuiltinSkillVisibility(); err != nil {
 		return fmt.Errorf("seed skill visibility: %w", err)
 	}
+	if v, _, _ := d.GetSetting("fuzz_intercept_tools_v1"); v != "done" {
+		if raw, ok, err := d.GetSetting("intercept_enabled_tools"); err != nil { return err } else if ok {
+			if merged, changed := mergeEnabledInterceptTools(raw, "fuzz_start", "fuzz_replay"); changed {
+				if err := d.SetSetting("intercept_enabled_tools", merged); err != nil { return err }
+			}
+		}
+		if err := d.SetSetting("fuzz_intercept_tools_v1", "done"); err != nil { return err }
+	}
 	if err := d.seedBuiltinTaskPlaybooks(); err != nil {
 		return fmt.Errorf("seed task playbooks: %w", err)
 	}
@@ -372,6 +380,7 @@ ON CONFLICT DO NOTHING`, r.kind, r.pattern, r.note); err != nil {
 // 不可见——它依赖外部 MCP 配置，用户按需开启。ON CONFLICT DO NOTHING 保证
 // 用户此后的开关不会被重启复活。
 var builtinSkillVisibility = map[string][]string{
+	"fuzz-workflow": {"planner", "mainagent", "worker"},
 	// 侦察与接口
 	"api-recon":            {"auto", "pentest", "worker"},
 	"attack-surface-recon": {"planner", "pentest", "worker"},

@@ -251,10 +251,12 @@ func (e *Engine) settleTask(ctx context.Context, t *Task) {
 //   - goal_met     planner 明确判定目标达成且无在跑意图（不再跑终局轮，直接 done）
 //   - auto_idle / auto_coverage / auto_rounds 程序化自动收尾（终态 done）
 func (e *Engine) settleTaskWithReason(ctx context.Context, t *Task, reason, detail string) {
+	if reason != "timeout" && e.fuzzPending != nil && e.fuzzPending(t.ID) { t.clearSettle(); return }
 	if !e.markSettling(t.ID, reason) {
 		return
 	}
 	t.clearSettle()
+	if e.fuzzStop != nil { e.fuzzStop(t.ID) }
 	label := reason
 	switch reason {
 	case "timeout":

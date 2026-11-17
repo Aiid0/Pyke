@@ -23,6 +23,7 @@ import (
 
 	"github.com/Aiid0/Pyke/agent"
 	"github.com/Aiid0/Pyke/db"
+	"github.com/Aiid0/Pyke/fuzzing"
 	"github.com/Aiid0/Pyke/hostd"
 	"github.com/Aiid0/Pyke/intercept"
 	"github.com/Aiid0/Pyke/listener"
@@ -43,6 +44,7 @@ var BuildVersion = "dev"
 // Server exposes the Pyke backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
+	fuzz *fuzzing.Manager
 	m      *Manager
 	engine *Engine
 	ctx    context.Context
@@ -282,6 +284,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	} else {
 		log.Printf("[engine] no LLM provider configured — engine idle until set via /api/llm or env")
 	}
+	s.initFuzz()
 	s.restoreTaskRuntimes()
 	go s.reconcileConcurrency()
 	s.startTaskArchiveWorker()
@@ -911,6 +914,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/hostenv/proxy-check", s.hostenvProxyCheck)
 	mux.HandleFunc("GET /api/chat/mentions", s.searchChatMentions)
 	mux.HandleFunc("POST /api/chat", s.chat)
+	mux.HandleFunc("GET /api/fuzz/environment", s.fuzzEnvironment)
+	mux.HandleFunc("GET /api/tasks/{id}/fuzz-jobs", s.fuzzAPI)
+	mux.HandleFunc("POST /api/tasks/{id}/fuzz-jobs", s.fuzzAPI)
+	mux.HandleFunc("GET /api/tasks/{id}/fuzz-jobs/{jid}/{action}", s.fuzzAPI)
+	mux.HandleFunc("POST /api/tasks/{id}/fuzz-jobs/{jid}/{action}", s.fuzzAPI)
 	mux.HandleFunc("POST /api/chat/upload", s.chatUpload) // 方式1 文件上传:落到会话/任务工作目录 uploads/
 	mux.HandleFunc("GET /api/tasks/{id}/chat/status", s.taskChatStatus)
 	mux.HandleFunc("POST /api/tasks/{id}/chat/stop", s.stopChat)

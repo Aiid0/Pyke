@@ -4,6 +4,7 @@
 // are passed through and formatted at the call site.
 
 import type { ChatMention } from "@/lib/chat-mentions";
+import type { FuzzConfig, FuzzEnvironment, FuzzJob, FuzzResults } from "@/lib/fuzz-types";
 import type { ImportedProject } from "@/lib/types";
 import { MOCK } from "@/lib/mock/enabled";
 import type {
@@ -285,6 +286,12 @@ function triggerBlobDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
+  fuzzEnvironment: () => get<FuzzEnvironment>("/fuzz/environment"),
+  fuzzJobs: (task: string) => get<FuzzJob[]>(`/tasks/${task}/fuzz-jobs`),
+  fuzzStart: (task: string, config: FuzzConfig) => post<FuzzJob>(`/tasks/${task}/fuzz-jobs`, config),
+  fuzzResults: (task: string, id: number) => get<FuzzResults>(`/tasks/${task}/fuzz-jobs/${id}/results`),
+  fuzzLogs: (task: string, id: number, offset = 0) => get<{ text: string; next_offset: number }>(`/tasks/${task}/fuzz-jobs/${id}/logs?offset=${offset}`),
+  fuzzAction: (task: string, id: number, action: string, data: Record<string, unknown> = {}) => post<unknown>(`/tasks/${task}/fuzz-jobs/${id}/${action}`, data),
   // 后端应用版本号（release 时由 ldflags 注入，默认 "dev"）。
   health: () => get<{ ok: boolean; status: string }>("/health"),
   version: () => get<{ service: string; version: string }>("/version"),
