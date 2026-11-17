@@ -24,10 +24,11 @@ export default function HistoryPage() {
   const [token, setToken] = React.useState("");
 
   React.useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("project") || "";
     api.projects().then((items) => {
       const git = items.filter((item) => item.source_type === "git");
       setProjects(git);
-      setSelectedID((current) => current || git[0]?.id || "");
+      setSelectedID((current) => current || git.find((item) => item.id === requested)?.id || git[0]?.id || "");
     }).catch((error) => toast.error((error as Error).message)).finally(() => setLoading(false));
   }, []);
 

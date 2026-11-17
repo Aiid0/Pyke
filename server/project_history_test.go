@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -95,7 +96,40 @@ func TestHistoryCommitCheckpointAndDedup(t *testing.T) {
 	if err = s.m.pg.QueryRow(`SELECT diff_excerpt FROM project_history_commits WHERE project_id=$1 AND commit_sha=$2`, p.ID, second).Scan(&excerpt); err != nil || !strings.Contains(excerpt, "authorize") {
 		t.Fatalf("excerpt: %v %q", err, excerpt)
 	}
-	w := projectRequest(t, s, token, http.MethodGet, "/api/projects/"+p.ID+"/history/commits?candidates=1", "", nil)
+	task, err := s.m.CreateTask("history lead fixture", "review source", nil, 0, 300)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundTaskID, _ := strconv.ParseInt(task.ID, 10, 64)
+	t.Cleanup(func() { _ = s.m.pg.DeleteTask(boundTaskID) })
+	p.Revision = second
+	bound, _ := json.Marshal(p)
+	if _, err := s.m.pg.Exec(`UPDATE tasks SET project=$1 WHERE id=$2`, bound, boundTaskID); err != nil {
+		t.Fatal(err)
+	}
+	leads, err := task.Store.SearchTaskHistoryLeads(context.Background(), 5, 0, "")
+	if err != nil || len(leads) != 1 || leads[0].CommitSHA != second {
+		t.Fatalf("reachable leads: %+v %v", leads, err)
+	}
+	w := projectRequest(t, s, token, http.MethodGet, "/api/tasks/"+task.ID+"/history-leads", "", nil)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), second) {
+		t.Fatalf("task leads: %d %s", w.Code, w.Body.String())
+	}
+	p.Revision = first
+	bound, _ = json.Marshal(p)
+	if _, err := s.m.pg.Exec(`UPDATE tasks SET project=$1 WHERE id=$2`, bound, boundTaskID); err != nil {
+		t.Fatal(err)
+	}
+	leads, err = task.Store.SearchTaskHistoryLeads(context.Background(), 5, 0, "")
+	if err != nil || len(leads) != 0 {
+		t.Fatalf("unreachable lead visible: %+v %v", leads, err)
+	}
+	p.Revision = second
+	bound, _ = json.Marshal(p)
+	if _, err := s.m.pg.Exec(`UPDATE tasks SET project=$1 WHERE id=$2`, bound, boundTaskID); err != nil {
+		t.Fatal(err)
+	}
+	w = projectRequest(t, s, token, http.MethodGet, "/api/projects/"+p.ID+"/history/commits?candidates=1", "", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("candidate endpoint: %d %s", w.Code, w.Body.String())
 	}
@@ -150,6 +184,10 @@ func TestHistoryCommitCheckpointAndDedup(t *testing.T) {
 	}
 	if err := s.m.pg.QueryRow(`SELECT depth FROM project_fix_candidates WHERE project_id=$1 AND primary_sha=$2`, p.ID, second).Scan(&depth); err != nil || depth != "deep" {
 		t.Fatalf("candidate depth=%s: %v", depth, err)
+	}
+	lead, saved, err := task.Store.GetTaskHistoryLead(context.Background(), second)
+	if err != nil || lead == nil || lead.Depth != "deep" || len(saved) != 1 || !strings.Contains(saved[0].Conclusion, "归属") {
+		t.Fatalf("task deep analysis: lead=%+v analyses=%+v err=%v", lead, saved, err)
 	}
 	w = projectRequest(t, s, token, http.MethodGet, endpoint, "", nil)
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "检查其他调用者") {
