@@ -290,6 +290,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 	s.startTaskArchiveWorker()
 	if m.pg != nil {
 		go s.runHistoryAnalysisQueue()
+		go s.runAutoHistoryScheduler()
 	}
 	// 让特权安装助手跟上主程序版本：它装在 root 拥有的 /usr/local/bin，
 	// 主服务写不进去，只能由它自己换装——这里只负责发现版本不一致并通知。

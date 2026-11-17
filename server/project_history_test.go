@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Aiid0/Pyke/db"
 	"github.com/google/uuid"
@@ -91,6 +92,39 @@ func TestHistoryCommitCheckpointAndDedup(t *testing.T) {
 	var cards int
 	if err = s.m.pg.QueryRow(`SELECT count(*) FROM project_fix_candidates WHERE project_id=$1`, p.ID).Scan(&cards); err != nil || cards != 1 {
 		t.Fatalf("candidate cards=%d: %v", cards, err)
+	}
+	s.queueAutoHistoryAnalyses(p.ID)
+	s.queueAutoHistoryAnalyses(p.ID)
+	var automatic int
+	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_fix_analysis WHERE project_id=$1 AND analysis_key LIKE 'auto:v1:%'`, p.ID).Scan(&automatic); err != nil || automatic != 1 {
+		t.Fatalf("automatic analysis jobs=%d: %v", automatic, err)
+	}
+	for attempt := 1; attempt <= 3; attempt++ {
+		job, err := s.claimHistoryAnalysis()
+		if err != nil || job == nil {
+			t.Fatalf("automatic claim %d: %+v %v", attempt, job, err)
+		}
+		s.performHistoryAnalysis(context.Background(), &scriptedProvider{}, *job)
+		var state string
+		var attempts int
+		if err := s.m.pg.QueryRow(`SELECT state,attempts FROM project_fix_analysis WHERE id=$1`, job.ID).Scan(&state, &attempts); err != nil {
+			t.Fatal(err)
+		}
+		want := "pending"
+		if attempt == 3 {
+			want = "failed"
+		}
+		if state != want || attempts != attempt {
+			t.Fatalf("automatic retry %d: state=%s attempts=%d", attempt, state, attempts)
+		}
+		if attempt < 3 {
+			if _, err := s.m.pg.Exec(`UPDATE project_fix_analysis SET updated_at=now()-interval '6 minutes' WHERE id=$1`, job.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := s.m.pg.Exec(`DELETE FROM project_fix_analysis WHERE project_id=$1 AND analysis_key LIKE 'auto:v1:%'`, p.ID); err != nil {
+		t.Fatal(err)
 	}
 	var excerpt string
 	if err = s.m.pg.QueryRow(`SELECT diff_excerpt FROM project_history_commits WHERE project_id=$1 AND commit_sha=$2`, p.ID, second).Scan(&excerpt); err != nil || !strings.Contains(excerpt, "authorize") {
@@ -308,5 +342,36 @@ func TestHistorySyncIncrementalAndRewrite(t *testing.T) {
 	}
 	if strings.Contains(string(config), token) || strings.Contains(string(config), "extraHeader") {
 		t.Fatal("credential persisted in history object store")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	auto := &Server{m: s.m, ctx: ctx}
+	if _, err := auto.startHistorySync(p, "tester", token); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(30 * time.Second)
+	defer deadline.Stop()
+	poll := time.NewTicker(50 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		var state string
+		if err := s.m.pg.QueryRow(`SELECT state FROM project_history WHERE project_id=$1`, p.ID).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		if state == "ready" || state == "interrupted" {
+			if state != "ready" {
+				t.Fatalf("automatic sync state=%s", state)
+			}
+			break
+		}
+		select {
+		case <-deadline.C:
+			t.Fatal("automatic history sync did not finish")
+		case <-poll.C:
+		}
+	}
+	var automatic int
+	if err := s.m.pg.QueryRow(`SELECT count(*) FROM project_fix_analysis WHERE project_id=$1 AND analysis_key LIKE 'auto:v1:%'`, p.ID).Scan(&automatic); err != nil || automatic == 0 {
+		t.Fatalf("automatic analyses=%d: %v", automatic, err)
 	}
 }

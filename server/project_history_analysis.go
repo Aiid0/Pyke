@@ -25,6 +25,26 @@ type historyAnalysisJob struct {
 	JobID     string
 }
 
+// Queue a bounded number of high-signal candidates once per screening version.
+// The unique analysis key makes repeated syncs and restarts idempotent.
+func (s *Server) queueAutoHistoryAnalyses(projectID string) {
+	_, _ = s.m.pg.Exec(`WITH budget AS (
+		SELECT GREATEST(0,20-count(*))::int AS remaining FROM project_fix_analysis
+		WHERE project_id=$1 AND analysis_key LIKE 'auto:v1:%'
+	), picks AS (
+		SELECT k.primary_sha FROM project_fix_candidates k
+		JOIN project_history_commits c ON c.project_id=k.project_id AND c.commit_sha=k.primary_sha
+		WHERE k.project_id=$1 AND k.score>=2 AND k.depth<>'deep' AND NOT c.orphaned
+		AND NOT EXISTS (SELECT 1 FROM project_fix_analysis a WHERE a.project_id=$1 AND a.analysis_key='auto:v1:'||k.primary_sha)
+		ORDER BY k.score DESC,c.authored_at DESC,k.primary_sha
+		LIMIT LEAST(5,(SELECT remaining FROM budget))
+	)
+	INSERT INTO project_fix_analysis(project_id,commit_sha,question,analysis_key,state)
+	SELECT $1,primary_sha,'分析该提交维护的安全约束、修复可能遗漏的平行入口及改动引入的回归；给出可在当前源码中核实的线索。',
+		'auto:v1:'||primary_sha,'pending' FROM picks
+	ON CONFLICT DO NOTHING`, projectID)
+}
+
 func (s *Server) requestHistoryAnalysis(w http.ResponseWriter, r *http.Request) {
 	p := s.historyProject(w, r)
 	if p == nil {
@@ -118,10 +138,12 @@ func (s *Server) claimHistoryAnalysis() (*historyAnalysisJob, error) {
 	job := &historyAnalysisJob{JobID: uuid.NewString()}
 	err := s.m.pg.QueryRow(`WITH pick AS (
 		SELECT a.id FROM project_fix_analysis a
-		WHERE a.task_id IS NULL AND (a.state='pending' OR (a.state='running' AND a.lease_until<now()))
+		WHERE a.task_id IS NULL AND ((a.state='pending' AND
+			(a.attempts=0 OR a.analysis_key NOT LIKE 'auto:%' OR a.updated_at<now()-interval '5 minutes'))
+			OR (a.state='running' AND a.lease_until<now()))
 		ORDER BY a.id FOR UPDATE SKIP LOCKED LIMIT 1
 	)
-	UPDATE project_fix_analysis a SET state='running',job_id=$1,lease_until=now()+interval '3 minutes',
+	UPDATE project_fix_analysis a SET state='running',job_id=$1,attempts=a.attempts+1,lease_until=now()+interval '3 minutes',
 		last_error='',updated_at=now() FROM pick
 	WHERE a.id=pick.id
 	RETURNING a.id,a.project_id,a.commit_sha,a.question`, job.JobID).
@@ -160,7 +182,9 @@ func (s *Server) performHistoryAnalysis(parent context.Context, prov llm.Provide
 	}
 	if err != nil {
 		// Model and Git errors may contain credentials or provider details.
-		_, _ = s.m.pg.Exec(`UPDATE project_fix_analysis SET state='failed',last_error='分析失败，可重新提交请求',lease_until=NULL,updated_at=now()
+		_, _ = s.m.pg.Exec(`UPDATE project_fix_analysis SET
+			state=CASE WHEN analysis_key LIKE 'auto:%' AND attempts<3 THEN 'pending' ELSE 'failed' END,
+			last_error='分析失败，可重新提交请求',lease_until=NULL,updated_at=now()
 			WHERE id=$1 AND job_id=$2`, job.ID, job.JobID)
 		return
 	}

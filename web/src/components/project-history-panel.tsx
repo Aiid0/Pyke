@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { GitCommitHorizontalIcon, Loader2Icon, SearchCheckIcon } from "lucide-react";
+import { GitCommitHorizontalIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -46,10 +46,9 @@ export function ProjectHistoryPanel({ project }: { project: ImportedProject }) {
 
   React.useEffect(() => { void refresh().catch((error) => toast.error((error as Error).message)); }, [refresh]);
   React.useEffect(() => {
-    if (status?.state !== "running") return;
-    const timer = window.setInterval(() => void refresh().catch(() => {}), 3000);
+    const timer = window.setInterval(() => void refresh().catch(() => {}), 10000);
     return () => window.clearInterval(timer);
-  }, [status?.state, refresh]);
+  }, [refresh]);
   React.useEffect(() => {
     if (!selected || !analyses.some((item) => item.state === "pending" || item.state === "running")) return;
     const timer = window.setInterval(() => {
@@ -103,21 +102,20 @@ export function ProjectHistoryPanel({ project }: { project: ImportedProject }) {
         <div><h3 className="text-sm font-semibold">历史修复分析</h3>
           <p className="text-xs text-muted-foreground">提交目录持续保存；候选只是源码线索，需结合目标版本验证。</p></div>
       </div>
-      <Button type="button" size="sm" variant="outline" disabled={busy || status?.state === "running"} onClick={() => void sync()}>
-        {status?.state === "running" ? <Loader2Icon className="size-4 animate-spin" /> : <SearchCheckIcon className="size-4" />}
-        {status?.state === "disabled" ? "开启历史索引" : "继续同步历史"}
-      </Button>
+      {status?.state === "running" && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2Icon className="size-3.5 animate-spin" />自动同步中</span>}
     </div>
+    {status?.state === "disabled" && <p className="mt-3 border-t pt-3 text-xs text-muted-foreground">已加入自动历史索引队列，稍后会显示进度。</p>}
     {status?.state !== "disabled" && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t pt-3 font-mono text-xs text-muted-foreground">
       <span>索引 {status?.indexed ?? 0}</span><span>候选 {status?.candidates ?? 0}</span><span>待处理 {status?.pending ?? 0}</span>
-      <span>状态 {status?.state}</span>{status?.shallow && <span>更早历史可继续回溯</span>}
+      <span>状态 {status?.state}</span>{status?.shallow && <span>更早历史会自动继续回溯</span>}
       {status?.rewritten && <span>远端分支历史已改写，旧记录仍保留</span>}
     </div>}
-    {status?.last_error && <p role="alert" className="mt-2 text-xs text-destructive">{status.last_error}</p>}
+    {status?.last_error && !status.last_error.includes("历史尚未拉取到更早提交") && <p role="alert" className="mt-2 text-xs text-destructive">{status.last_error}</p>}
     {listError && <p role="alert" className="mt-2 text-xs text-muted-foreground">{listError}</p>}
-    {status?.state !== "running" && <details className="mt-2 text-xs"><summary className="cursor-pointer">私有仓库访问令牌</summary>
+    {status?.state === "interrupted" && !status.last_error.includes("历史尚未拉取到更早提交") && <details className="mt-2 text-xs"><summary className="cursor-pointer">同步失败：重试或提供私有仓库令牌</summary>
       <Input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="用户名（可选）" className="mt-2" />
       <Input type="password" autoComplete="new-password" value={token} onChange={(event) => setToken(event.target.value)} placeholder="令牌仅用于本次同步" className="mt-2" />
+      <Button type="button" size="sm" variant="outline" disabled={busy} className="mt-2" onClick={() => void sync()}>重试同步</Button>
     </details>}
     {status?.state !== "disabled" && <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-[1fr_auto_auto_auto]">
       <Input aria-label="按完整提交 SHA 定位" placeholder="完整提交 SHA（留空查看候选）" value={shaInput} onChange={(event) => setSHAInput(event.target.value.trim())} className="font-mono text-xs" />

@@ -62,6 +62,7 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := db.Project{ID: uuid.NewString()}
+	var historyUsername, historyToken string
 	var stats projectsource.Stats
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		r.Body = http.MaxBytesReader(w, r.Body, projectsource.MaxUploadBytes)
@@ -152,6 +153,7 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.SourceType = "git"
+		historyUsername, historyToken = request.Username, request.Token
 		p.Name = strings.TrimSpace(request.Name)
 		p.RepositoryURL, err = projectsource.RepositoryURL(request.URL)
 		if err == nil {
@@ -194,6 +196,9 @@ func (s *Server) importProject(w http.ResponseWriter, r *http.Request) {
 		_ = os.RemoveAll(final)
 		writeErr(w, 500, "无法保存项目信息")
 		return
+	}
+	if created.SourceType == "git" && s.ctx.Err() == nil {
+		_, _ = s.startHistorySync(created, historyUsername, historyToken)
 	}
 	writeJSON(w, http.StatusCreated, projectDTO{Project: created, Directory: filepath.Join(final, "source")})
 }

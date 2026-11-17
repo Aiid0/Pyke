@@ -595,6 +595,7 @@ CREATE TABLE IF NOT EXISTS project_fix_analysis (
     state TEXT NOT NULL DEFAULT 'pending',
     analysis_key TEXT NOT NULL DEFAULT '',
     job_id TEXT NOT NULL DEFAULT '',
+    attempts INT NOT NULL DEFAULT 0,
     lease_until TIMESTAMPTZ,
     last_error TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -605,6 +606,7 @@ CREATE INDEX IF NOT EXISTS idx_project_fix_analysis_commit ON project_fix_analys
 ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS target_revision TEXT NOT NULL DEFAULT '';
 ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS analysis_key TEXT NOT NULL DEFAULT '';
 ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS job_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS attempts INT NOT NULL DEFAULT 0;
 ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
 ALTER TABLE project_fix_analysis ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_project_fix_analysis_key ON project_fix_analysis(project_id,analysis_key) WHERE analysis_key<>'';

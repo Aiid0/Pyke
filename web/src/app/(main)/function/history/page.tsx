@@ -41,7 +41,7 @@ export default function HistoryPage() {
       setProjects((previous) => [project, ...previous.filter((item) => item.id !== project.id)]);
       setSelectedID(project.id);
       setToken("");
-      toast.success("仓库已导入，可以开始历史索引");
+      toast.success("仓库已导入，历史索引将在后台自动启动");
     } catch (error) { toast.error((error as Error).message); }
     finally { setImporting(false); }
   }

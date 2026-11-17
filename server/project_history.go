@@ -187,16 +187,33 @@ func (s *Server) historySync(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	jobID, err := s.startHistorySync(p, input.Username, input.Token)
+	if err != nil {
+		switch err {
+		case errHistorySlotsFull:
+			writeErr(w, http.StatusTooManyRequests, "历史同步任务已满，请稍后重试")
+		case errHistoryBusy:
+			writeErr(w, http.StatusConflict, "该项目历史正在同步")
+		default:
+			writeErr(w, 500, "无法启动历史同步")
+		}
+		return
+	}
+	writeJSON(w, 202, map[string]any{"state": "running", "project_id": p.ID, "job_id": jobID})
+}
+
+var errHistorySlotsFull = errors.New("历史同步任务已满")
+var errHistoryBusy = errors.New("项目历史正在同步")
+
+func (s *Server) startHistorySync(p *db.Project, username, token string) (string, error) {
 	select {
 	case historySlots <- struct{}{}:
 	default:
-		writeErr(w, http.StatusTooManyRequests, "历史同步任务已满，请稍后重试")
-		return
+		return "", errHistorySlotsFull
 	}
 	if _, busy := historyJobs.LoadOrStore(p.ID, true); busy {
 		<-historySlots
-		writeErr(w, 409, "该项目历史正在同步")
-		return
+		return "", errHistoryBusy
 	}
 	jobID := uuid.NewString()
 	var claimed string
@@ -209,16 +226,14 @@ func (s *Server) historySync(w http.ResponseWriter, r *http.Request) {
 		historyJobs.Delete(p.ID)
 		<-historySlots
 		if errors.Is(err, sql.ErrNoRows) {
-			writeErr(w, 409, "该项目历史正在同步")
-			return
+			return "", errHistoryBusy
 		}
-		writeErr(w, 500, "无法启动历史同步")
-		return
+		return "", err
 	}
 	go func() {
 		defer historyJobs.Delete(p.ID)
 		defer func() { <-historySlots }()
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		ctx, cancel := context.WithTimeout(s.ctx, 15*time.Minute)
 		defer cancel()
 		heartbeatDone := make(chan struct{})
 		go func() {
@@ -243,9 +258,12 @@ func (s *Server) historySync(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}()
-		err := s.runHistorySync(ctx, p, input.Username, input.Token)
+		err := s.runHistorySync(ctx, p, username, token)
 		cancel()
 		<-heartbeatDone
+		if s.ctx.Err() == nil {
+			s.queueAutoHistoryAnalyses(p.ID)
+		}
 		state, message := "ready", ""
 		if err != nil {
 			state, message = "interrupted", err.Error()
@@ -255,7 +273,7 @@ func (s *Server) historySync(w http.ResponseWriter, r *http.Request) {
 			candidates=(SELECT count(*) FROM project_fix_candidates WHERE project_id=$1)
 			WHERE project_id=$1 AND job_id=$4`, p.ID, state, message, jobID)
 	}()
-	writeJSON(w, 202, map[string]any{"state": "running", "project_id": p.ID, "job_id": jobID})
+	return jobID, nil
 }
 
 func (s *Server) runHistorySync(ctx context.Context, p *db.Project, username, token string) error {
