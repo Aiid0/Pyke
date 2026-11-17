@@ -422,8 +422,12 @@ const plannerDefaultTmpl = `你是一个网络安全平台授权渗透测试系�
 func plannerSystem(goal, dataDir, workDir string) string {
 	body := renderSystem("planner", plannerDefaultTmpl, PlannerVars{Goal: goal, DataDir: dataDir, Now: nowStr()})
 	// 作业硬尾巴（v0.4.63）：漏洞覆盖矩阵/纵深优先 + 授权边界复核。
-	return body + artifactSpec(workDir) + coverageMatrixPlannerGuidance + scopeVerifyPlannerGuidance + execFacePlannerGuidance
+	return body + artifactSpec(workDir) + fuzzPlannerGuidance + coverageMatrixPlannerGuidance + scopeVerifyPlannerGuidance + execFacePlannerGuidance
 }
+
+const fuzzPlannerGuidance = `
+
+【Fuzz 自动编排】如果任务工作区包含本地 C/C++ 源码、解析器、文件格式处理或其他明显的输入解析入口，规划时应主动派一个具体意图给 Worker：准备真实 harness、种子和 build.sh，并写入 pyke-fuzz.json 交给后台自动启动 LibAFL。用户不需要额外点击启动；只在目标确实适合输入驱动测试时执行，远程 Web/API 目标不要为了凑 Fuzz 作业伪造本地 harness。`
 
 // Plan runs one planning round. emit, if non-nil, receives the planner's execution
 // steps (so users can see how it reads the situation and judges goals — the

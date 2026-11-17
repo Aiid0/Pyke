@@ -156,7 +156,8 @@ func (m *Manager) Create(ctx context.Context, task string, exp int64, creator st
 	if e != nil || (outputRel != ".." && !strings.HasPrefix(outputRel, ".."+string(filepath.Separator))) {
 		return Job{}, fmt.Errorf("source must not contain fuzz output directory")
 	}
-	if strings.Contains(filepath.ToSlash(c.Source), "shared/fuzz") {
+	cleanSource := filepath.ToSlash(filepath.Clean(c.Source))
+	if cleanSource == "shared/fuzz" || strings.HasPrefix(cleanSource, "shared/fuzz/") {
 		return Job{}, fmt.Errorf("source must not contain fuzz output")
 	}
 	for _, p := range []string{c.Build, c.Seeds} {

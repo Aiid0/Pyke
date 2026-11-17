@@ -329,7 +329,7 @@ func workerSystem(proxyAddr, caCert, dataDir, runDir string) string {
 	// the traffic_* tools are registered — so it gates the traffic-tool note.
 	// Optional finding guidance is added for every role after tool resolution.
 	// 作业硬尾巴（v0.4.63）：扫描器优先 + 技能路由，代码注入不可经 UI 改掉。
-	out := body + workerTrafficBlock(caCert != "") + workerArtifactSpec(runDir) + scannerFirstGuidance + skillRoutingGuidance + execFaceWorkerGuidance
+	out := body + workerTrafficBlock(caCert != "") + workerArtifactSpec(runDir) + fuzzAutopilotGuidance(runDir) + scannerFirstGuidance + skillRoutingGuidance + execFaceWorkerGuidance
 	// 宿主工具清单：真正动手的是 worker，所以清单必须进 worker 的 system prompt。
 	// 之前只有 planner 的唤醒提示里有（用于「派意图选手段」），worker 看不到——
 	// 于是新装的一批工具（dalfox/feroxbuster/chisel…）一次都没被用起来。
@@ -337,6 +337,12 @@ func workerSystem(proxyAddr, caCert, dataDir, runDir string) string {
 		out += "\n\n【本机可用工具】\n" + t
 	}
 	return out
+}
+
+func fuzzAutopilotGuidance(runDir string) string {
+	taskDir := filepath.Dir(runDir)
+	targetDir := filepath.Join(taskDir, "shared", "fuzz-targets", "<name>")
+	return "\n\n【Fuzz 自动编排】如果本意图涉及本地源码、库、解析器或文件格式处理，且任务尚未有对应 Fuzz 作业：先加载 fuzz-workflow skill，主动准备一个真实入口的 harness、build.sh 和 seeds。适配目录使用 " + targetDir + "（把 <name> 换成短名称）；完成并自测构建后，在该目录写入 pyke-fuzz.json，字段至少为 source=\"shared/fuzz-targets/<name>\"、build=\"build.sh\"、seeds=\"seeds\"、request_id=唯一稳定字符串、auto_analyze=true。后台会自动发现这个文件并启动 LibAFL，你不需要等待用户点击或重复调用 fuzz_start。启动后继续本意图的证据工作，用 fuzz_status/results 查看结果；发现异常必须 replay 后再判断。若当前目标不是本地可 fuzz 的输入处理逻辑，跳过，不要为了凑作业伪造 harness。"
 }
 
 // renderIntentTask formats the claimed intent for the worker's launch USER message:

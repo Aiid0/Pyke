@@ -64,6 +64,40 @@ func (s *Server) initFuzz() {
 		return s.fuzzAction(ctx, strconv.FormatInt(task, 10), op, "agent", raw)
 	}
 	go s.fuzz.Run(s.ctx)
+	go s.runFuzzAutodiscovery()
+}
+
+func (s *Server) runFuzzAutodiscovery() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			entries, err := os.ReadDir(filepath.Join(s.m.dir, "tasks"))
+			if err != nil {
+				continue
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				t, ok := s.m.Task(entry.Name())
+				if !ok {
+					continue
+				}
+				jobs, err := s.fuzz.AutoDiscover(s.ctx, t.ID, t.ExpID)
+				if err != nil {
+					log.Printf("[fuzz] auto-discovery task=%s: %v", t.ID, err)
+					continue
+				}
+				if len(jobs) > 0 {
+					s.fuzz.Wake(t.ID)
+				}
+			}
+		}
+	}
 }
 func (s *Server) fuzzAction(ctx context.Context, task, op, creator string, raw json.RawMessage) (result any, resultErr error) {
 	if s.fuzz == nil {

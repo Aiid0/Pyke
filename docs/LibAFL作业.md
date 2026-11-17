@@ -12,7 +12,7 @@ docker build -t pyke-libafl:0.15.4 fuzzing/runner
 
 镜像固定 LibAFL commit bd49bdf4f64a50349d803646fb2afa9b8b104fa5、Rust nightly-2025-10-01；镜像内保存 Cargo.lock。具体作业记录镜像内容 ID 和源码 SHA256 摘要。运行环境不会自动安装或下载项目依赖，额外依赖应提前加入派生镜像或源码目录。
 
-将 fuzzing/runner/example 复制到任务工作目录的 shared/parser-example 后，使用 source=shared/parser-example、build=build.sh、seeds=seeds 创建作业。该示例包含故意的越界写，只用于验证链路。
+正常流程由 Agent 自动准备 `shared/fuzz-targets/<name>/`，并写入 `pyke-fuzz.json`；后台发现后自动创建作业，用户只需在任务详情查看状态。手工调试时仍可将 fuzzing/runner/example 复制到任务工作目录并用 source=shared/parser-example、build=build.sh、seeds=seeds 创建作业。该示例包含故意的越界写，只用于验证链路。
 
 ## 行为
 

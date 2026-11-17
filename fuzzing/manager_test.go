@@ -60,6 +60,38 @@ func TestBudgetValidation(t *testing.T) {
 		t.Fatal("negative cpu allowed")
 	}
 }
+
+func TestAutoDiscoverCreatesIdempotentJob(t *testing.T) {
+	s, task, exp := testStore(t)
+	root := t.TempDir()
+	target := filepath.Join(root, "tasks", task, "shared", "fuzz-targets", "parser")
+	if err := os.MkdirAll(filepath.Join(target, "seeds"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{
+		"build.sh":       "#!/bin/sh\ntrue\n",
+		"seeds/initial":  "{}",
+		"pyke-fuzz.json": `{"source":"shared/fuzz-targets/parser","build":"build.sh","seeds":"seeds","auto_analyze":true}`,
+	} {
+		if err := os.WriteFile(filepath.Join(target, name), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rt := &fakeRuntime{}
+	m := &Manager{Store: s, Root: root, Runtime: rt}
+	jobs, err := m.AutoDiscover(t.Context(), task, exp)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("auto discovery: jobs=%d err=%v", len(jobs), err)
+	}
+	if jobs[0].Creator != "autopilot" || !jobs[0].Config.AutoAnalyze {
+		t.Fatalf("unexpected auto job: %+v", jobs[0])
+	}
+	again, err := m.AutoDiscover(t.Context(), task, exp)
+	if err != nil || len(again) != 1 || again[0].ID != jobs[0].ID {
+		t.Fatalf("auto discovery not idempotent: %+v err=%v", again, err)
+	}
+}
+
 func testStore(t *testing.T) (Store, string, int64) {
 	t.Helper()
 	dsn := os.Getenv("PYKE_PG_DSN")

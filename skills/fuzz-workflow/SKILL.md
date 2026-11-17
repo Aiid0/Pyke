@@ -9,7 +9,7 @@ description: 使用任务级 LibAFL 对本地 C/C++ 源码、库函数和解析�
 
 ## 准备入口
 
-在任务目录的独立子目录（如 shared/parser-fuzz）准备源码、harness、build.sh、seeds/，不修改绑定源码。源码快照内不能含软链接。记录原始版本和目标入口。
+在任务目录的独立子目录（如 shared/fuzz-targets/parser）准备源码、harness、build.sh、seeds/，不修改绑定源码。源码快照内不能含软链接。记录原始版本和目标入口。准备完成后在同一目录写入 `pyke-fuzz.json`（至少包含 `source`、`build`、`seeds`、唯一 `request_id`，建议 `auto_analyze: true`）；后台会自动发现并启动作业，用户无需再点启动或手工调用 `fuzz_start`。
 
 harness 导出 `extern "C" int LLVMFuzzerTestOneInput(const uint8_t*, size_t)`；每次调用正确初始化并释放状态，遵守目标 API 前置条件。避免仅测试 harness 自身或在到达解析逻辑前拒绝所有输入。
 
