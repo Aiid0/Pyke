@@ -39,6 +39,9 @@ services:
       PYKE_LLM_MODEL: ${PYKE_LLM_MODEL:-${POJUN_LLM_MODEL:-}}
       PYKE_LLM_BASE_URL: ${PYKE_LLM_BASE_URL:-${POJUN_LLM_BASE_URL:-}}
       PYKE_LLM_PROXY: ${PYKE_LLM_PROXY:-${POJUN_LLM_PROXY:-}}
+      # LibAFL runner: the service launches isolated jobs through the host Docker daemon.
+      PYKE_FUZZ_IMAGE: ${PYKE_FUZZ_IMAGE:-pyke-libafl:0.15.4}
+      PYKE_FUZZ_HOST_ROOT: ${PYKE_FUZZ_HOST_ROOT:-/data/project/software/Pyke/data}
     ports:
       - "8787:8787"
       - "127.0.0.1:8788:8788"
@@ -52,6 +55,9 @@ services:
       # 把项目根目录的 skills 挂进容器（覆盖镜像内置的 /app/skills）；
       # 改 skill 无需重建镜像，容器读的就是宿主机这份。
       - ./skills:/app/skills
+      # Fuzz jobs run in sibling containers, not inside the Pyke container.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
     restart: unless-stopped
 
 volumes:
