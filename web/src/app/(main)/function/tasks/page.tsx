@@ -256,7 +256,7 @@ const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: "paused", label: "已暂停" },
   { value: "done", label: "已完成" },
   { value: "failed", label: "失败" },
-  { value: "timeout", label: "已超时" },
+  { value: "timeout", label: "未完成" },
 ];
 
 // Select 不接受空字符串 value,所以「无分类」在筛选器、新建表单和批量移动里

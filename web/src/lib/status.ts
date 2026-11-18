@@ -53,7 +53,8 @@ const task: Record<string, StatusMeta> = {
   paused: { label: "已暂停", tone: "amber" },
   done: { label: "已完成", tone: "green" },
   failed: { label: "失败", tone: "red" },
-  timeout: { label: "已超时", tone: "amber" },
+  // timeout 也用于规划轮数等自动收尾时仍有未达成目标的任务。
+  timeout: { label: "未完成", tone: "amber" },
 };
 
 const severity: Record<string, StatusMeta> = {
