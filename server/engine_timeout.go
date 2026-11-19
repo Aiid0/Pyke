@@ -3,8 +3,8 @@ package server
 import (
 	"context"
 
-	"github.com/Aiid0/Pyke/intercept"
 	"fmt"
+	"github.com/Aiid0/Pyke/intercept"
 	"log"
 	"strconv"
 	"sync/atomic"
@@ -251,12 +251,17 @@ func (e *Engine) settleTask(ctx context.Context, t *Task) {
 //   - goal_met     planner 明确判定目标达成且无在跑意图（不再跑终局轮，直接 done）
 //   - auto_idle / auto_coverage / auto_rounds 程序化自动收尾（终态 done）
 func (e *Engine) settleTaskWithReason(ctx context.Context, t *Task, reason, detail string) {
-	if reason != "timeout" && e.fuzzPending != nil && e.fuzzPending(t.ID) { t.clearSettle(); return }
+	if reason != "timeout" && e.fuzzPending != nil && e.fuzzPending(t.ID) {
+		t.clearSettle()
+		return
+	}
 	if !e.markSettling(t.ID, reason) {
 		return
 	}
 	t.clearSettle()
-	if e.fuzzStop != nil { e.fuzzStop(t.ID) }
+	if e.fuzzStop != nil {
+		e.fuzzStop(t.ID)
+	}
 	label := reason
 	switch reason {
 	case "timeout":
@@ -318,6 +323,7 @@ func (e *Engine) settleTaskWithReason(ctx context.Context, t *Task, reason, deta
 		log.Printf("[settle] task %s 收尾完成,终态=%s（%s）", t.ID, status, label)
 		e.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 			Summary: fmt.Sprintf("任务收尾完成：%s；终态 %s", label, status)})
+		go e.releaseTaskResources(t.ID)
 	default:
 		log.Printf("[settle] task %s 收尾时已是终态,保留原状态", t.ID)
 	}

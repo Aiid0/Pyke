@@ -97,6 +97,22 @@ guard 的 PreToolUse 只看到外层名 `ExecuteExtraTool`，而它不在 `defau
 发现列表展开行也已支持 `artifact:<id>` 内联渲染（`web/src/components/markdown.tsx`，
 与 docx 同一约定）。注意引用只写 Report 字段，evidence 字段导出时固定为代码块。
 
+## 5.2 任务资源租约与回收（v0.5.0）
+
+VM 会持续占用 CPU、内存和网络，不能按普通的一次性 MCP 调用处理。平台将它视为
+**任务托管资源**：Agent 对关机 VM 调用 `vm_start` 时，MCP 才会写入当前任务私有租约；
+若 VM 已在运行，则只使用、不接管，绝不自动关闭，保护人工或其他任务启动的靶机。
+
+| 事件 | 行为 |
+| --- | --- |
+| 主 Agent 点击停止 | 取消本轮对话，并异步停止该任务的 Fuzz 与托管 VM |
+| 暂停/删除任务 | 同步回收托管 VM；回收失败时保留租约以供重试和审计 |
+| Pyke 服务退出/重启 | 扫描遗留租约并回收，避免宿主机遗留高 CPU 虚机 |
+
+回收先发送 ACPI 优雅关机，最多等待 30 秒；仅对有租约的 VM 才会 `poweroff`。
+自动回收**不会自动还原快照**，避免销毁尚未归档的取证现场。任务上下文只通过
+vm-lab 子进程的 `PYKE_VM_LEASE_FILE` 注入，不修改 MCP 数据库配置，也不暴露给模型。
+
 ## 6. 二期（未做）
 
 - 原生 Go 工具版（agent/tools_vm.go 三清单 + BuiltinToolSeeds）：审批/证据全链路

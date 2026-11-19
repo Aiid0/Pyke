@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Autumn-27/norma/skill"
-	actool "github.com/Autumn-27/norma/tool"
 	"github.com/Aiid0/Pyke/agent"
 	"github.com/Aiid0/Pyke/db"
 	"github.com/Aiid0/Pyke/traffic"
+	"github.com/Autumn-27/norma/skill"
+	actool "github.com/Autumn-27/norma/tool"
 )
 
 // wireAgentAugment connects the PG agent_visibility table into the agent runtime:
@@ -26,7 +26,7 @@ import (
 // hostTools, if set, returns runtime host tools (currently the traffic tools when
 // capture is on) to add to EVERY agent's base list — the DB tools table then
 // filters them per-agent binding. Empty/nil → no host tools this run (capture off).
-func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string)) {
+func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.CoreTool, map[string][]string), vm *vmLifecycle) {
 	// 技能速查块注入 system prompt（v0.4.60）：Skill 是元工具，模型不被 system
 	// prompt 显式提醒就几乎不调（56k 调用里 Skill 只触发 8 次、任务 18 零次）。
 	// 这里按 agent 的绑定清单生成「名称+何时用」速查表；描述已按触发场景撰写，
@@ -91,6 +91,7 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 			return nil, agent.DeferredInfo{}, nil
 		}
 		var extra []actool.CoreTool
+		runInfo := agent.RunInfoFrom(ctx)
 
 		// --- skills: load visible skills into reg (used for the Skill meta-tool
 		// and to know which MCP servers are skill-gated). ---
@@ -152,7 +153,10 @@ func wireAgentAugment(pg *db.DB, skillDir string, hostTools func() ([]actool.Cor
 				if until, bad := mcpFailedUntil(m.Name); bad && time.Now().Before(until) {
 					continue
 				}
-				cl, err := connectMCP(ctx, m)
+				// vm-lab gets a task-private lease path.  The injected environment is
+				// process-local, so concurrent task agents cannot overwrite each other.
+				configured := vm.injectVMLifecycleEnv(m, runInfo.TaskID)
+				cl, err := connectMCP(ctx, configured)
 				if err != nil {
 					log.Printf("[mcp] %s 连接失败: %v（10 分钟内不再重试）", m.Name, err)
 					markMCPFailed(m.Name, 10*time.Minute)

@@ -457,6 +457,18 @@ func (m *Manager) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			// A service shutdown used to leave Docker runners alive because their
+			// supervisor is outside this process.  Stop every active job before
+			// returning; persisted state remains available for an explicit resume.
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+			if jobs, err := m.Store.List(""); err == nil {
+				for _, j := range jobs {
+					if Active(j.State) {
+						_ = m.Stop(cleanupCtx, j.TaskID, j.ID)
+					}
+				}
+			}
+			cancel()
 			return
 		case <-ticker.C:
 			m.Tick(ctx)

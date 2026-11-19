@@ -12,11 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Autumn-27/norma/harness"
-	"github.com/Autumn-27/norma/llm"
 	"github.com/Aiid0/Pyke/agent"
 	"github.com/Aiid0/Pyke/db"
 	"github.com/Aiid0/Pyke/intercept"
+	"github.com/Autumn-27/norma/harness"
+	"github.com/Autumn-27/norma/llm"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -105,9 +105,10 @@ func isTransientContextCanceled(err error) bool {
 // but idle until an LLM is set.
 type Engine struct {
 	fuzzPending func(string) bool
-	fuzzStop func(string)
-	m        *Manager
-	debounce time.Duration
+	fuzzStop    func(string)
+	vmStop      func(string)
+	m           *Manager
+	debounce    time.Duration
 
 	bc *Broadcaster // live activity pub/sub (SSE)
 
@@ -195,7 +196,16 @@ func (e *Engine) nextPlannerRound(taskID string) int {
 func (e *Engine) Pause(taskID string, cause error) {
 	e.paused.Store(taskID, true)
 	e.cancelExec(taskID, cause)
-	if e.fuzzStop != nil { e.fuzzStop(taskID) }
+	e.releaseTaskResources(taskID)
+}
+
+// releaseTaskResources is used for every terminal path as well as manual
+// controls. A terminal exploration has no legitimate reason to keep a fuzzer or
+// VM burning host CPU; callbacks are supplied by Server and are idempotent.
+func (e *Engine) releaseTaskResources(taskID string) {
+	if e.fuzzStop != nil {
+		e.fuzzStop(taskID)
+	}
 }
 
 // BeginDelete installs an execution barrier before task data/files are removed.
@@ -211,6 +221,7 @@ func (e *Engine) BeginDelete(taskID string) bool {
 	e.paused.Store(taskID, true)
 	e.deleteMu.Unlock()
 	e.cancelExec(taskID, agent.AbortTaskDeleted)
+	e.releaseTaskResources(taskID)
 	return true
 }
 
@@ -1111,7 +1122,9 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		// 还有 open/running 意图 → 保持 running、静默等待；意图已全部跑干 → 落 done。
 		// 整段纯 Go、不触发任何 LLM 调用，也不打规划轮 marker。
 		if open, err := t.Store.HasOpenGoal(); err == nil && !open {
-			if e.fuzzPending != nil && e.fuzzPending(t.ID) { return }
+			if e.fuzzPending != nil && e.fuzzPending(t.ID) {
+				return
+			}
 			// 自主推进：目标虽然全达成，但只要还有可干的事（未测资产/高危未闭环/上一波有
 			// 新增事实），就先续杯加下一层目标、回到 planner——否则会走 goalless 分支直接
 			// 落 done。
@@ -1130,6 +1143,7 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 				} else if won {
 					e.emitActivity(t, db.Activity{Worker: "system", Kind: "text",
 						Summary: "目标已全部达成，直投意图已执行完毕，任务结束"})
+					go e.releaseTaskResources(t.ID)
 				}
 			}
 			return // goalless 分支永不进入 planner.Plan
@@ -1206,7 +1220,10 @@ func (e *Engine) plannerLoop(ctx context.Context, t *Task) {
 		case res.err != nil && ectx.Err() == nil:
 			log.Printf("[planner] task %s 规划出错: %v", t.ID, res.err)
 		case res.met:
-			if e.fuzzPending != nil && e.fuzzPending(t.ID) { res.met = false; break }
+			if e.fuzzPending != nil && e.fuzzPending(t.ID) {
+				res.met = false
+				break
+			}
 			// 自主推进续杯：目标全部达成时先问一句「还有没有活可干」。有未测资产/
 			// 高危漏洞且波次没用完 → 自动追加下一层目标，本轮不取消 worker、不
 			// settle，当作「未完成」继续规划。

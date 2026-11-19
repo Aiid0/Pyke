@@ -44,7 +44,8 @@ var BuildVersion = "dev"
 // Server exposes the Pyke backend over a JSON HTTP API for the shadcn/ui
 // frontend.
 type Server struct {
-	fuzz *fuzzing.Manager
+	fuzz   *fuzzing.Manager
+	vm     *vmLifecycle
 	m      *Manager
 	engine *Engine
 	ctx    context.Context
@@ -174,6 +175,14 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		provByProfile:  map[int64]*provEntry{}, llmHealth: newLLMHealthRegistry(m.pg),
 		taskAgents: map[string]*taskAgentBundle{}, archiveWake: make(chan struct{}, 1)}
 	s.jwtKey.Store(key)
+	s.vm = newVMLifecycle(m.dir, m.pg)
+	s.engine.vmStop = func(id string) {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), vmStopTimeout)
+		defer cancel()
+		if err := s.vm.StopTask(cleanupCtx, id); err != nil {
+			log.Printf("[vm] stop task %s: %v", id, err)
+		}
+	}
 	s.listeners = listener.NewManager()
 	agent.SetListenerManager(s.listeners)
 	agent.SetConnectBackResolver(func(port int) agent.ConnectBack {
@@ -246,7 +255,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 			}
 			return a.TaskTimeoutWrapupMaxTurns, true
 		}
-		wireAgentAugment(m.pg, s.skillDir, s.hostTools)        // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
+		wireAgentAugment(m.pg, s.skillDir, s.hostTools, s.vm)  // 可见 skills/MCP + 流量/编排 host 工具装配进 agent 工具集
 		agent.SetCweSkillIndex(BuildCweSkillIndex(s.skillDir)) // CWE→方法论 skill 联动（漏洞情报工具输出 related_skills）
 		domainReg := buildDomainReg(m.Assets())
 		wireTools(m.pg, domainReg) // 内置工具表：按 agent 过滤 + 覆盖描述/schema + 注入默认值
@@ -285,6 +294,7 @@ func New(ctx context.Context, m *Manager, skillDir string, dataDir string, keyDi
 		log.Printf("[engine] no LLM provider configured — engine idle until set via /api/llm or env")
 	}
 	s.initFuzz()
+	go s.vm.Run(s.ctx)
 	s.restoreTaskRuntimes()
 	go s.reconcileConcurrency()
 	s.startTaskArchiveWorker()
@@ -4380,20 +4390,32 @@ func (s *Server) taskChatStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"running": running})
 }
 
-// stopChat aborts the in-flight main-agent turn for a task (manual stop button).
-// Mirrors pgStopConversation: cancels only the current turn; planner/workers are
-// unaffected and continue running. The user can send a new message immediately.
+// stopChat aborts the in-flight main-agent turn and asynchronously releases
+// task-owned runtime resources (fuzzers and VM leases).  A user pressing Stop
+// reasonably expects CPU-consuming work launched for this task to stop too;
+// planner/workers retain their existing independent lifecycle.
 func (s *Server) stopChat(w http.ResponseWriter, r *http.Request) {
 	t := s.m.ResolveTask(r.PathValue("id"))
 	if t == nil {
 		writeErr(w, 404, "task not found")
 		return
 	}
-	if !s.cancelTaskChat(t.ID, agent.AbortChatStoppedByUser) {
-		writeJSON(w, 200, map[string]any{"status": "idle"})
+	running := s.cancelTaskChat(t.ID, agent.AbortChatStoppedByUser)
+	go s.stopTaskRuntimeResources(t.ID)
+	if !running {
+		writeJSON(w, 200, map[string]any{"status": "idle", "resources": "stopping"})
 		return
 	}
 	writeJSON(w, 200, map[string]any{"status": "stopping"})
+}
+
+func (s *Server) stopTaskRuntimeResources(taskID string) {
+	if s.engine.fuzzStop != nil {
+		s.engine.fuzzStop(taskID)
+	}
+	if s.engine.vmStop != nil {
+		s.engine.vmStop(taskID)
+	}
 }
 
 // fallbackChat is the no-LLM human-steering handler: simple命令 + 态势摘要.

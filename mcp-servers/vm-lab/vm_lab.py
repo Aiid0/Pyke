@@ -34,6 +34,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -68,6 +69,63 @@ def _vm_lock(vm: str) -> threading.Lock:
         if vm not in _vm_locks:
             _vm_locks[vm] = threading.Lock()
         return _vm_locks[vm]
+
+
+# Pyke passes this path only for an agent run that has a task context.  The MCP
+# remains usable standalone: without it it never creates or takes ownership of
+# a VM.  A lease is deliberately written only after this invocation actually
+# starts a powered-off VM; attaching to an already-running VM could otherwise
+# turn a user's own long-running lab into an unexpected cleanup target.
+def _lease_path() -> Path | None:
+    raw = _env("PYKE_VM_LEASE_FILE")
+    return Path(raw) if raw else None
+
+
+def _read_leases(path: Path) -> list[dict[str, Any]]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        leases = raw.get("leases", []) if isinstance(raw, dict) else []
+        return [x for x in leases if isinstance(x, dict) and isinstance(x.get("vm"), str)]
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def _write_leases(path: Path, leases: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not leases:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    fd, tmp = tempfile.mkstemp(prefix=".vm-leases-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"version": 1, "leases": leases}, f, ensure_ascii=False)
+            f.write("\n")
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _add_lease(vm: str) -> None:
+    path = _lease_path()
+    if path is None:
+        return
+    leases = [x for x in _read_leases(path) if x.get("vm") != vm]
+    leases.append({"vm": vm, "started_at": int(time.time())})
+    _write_leases(path, leases)
+
+
+def _remove_lease(vm: str) -> None:
+    path = _lease_path()
+    if path is None:
+        return
+    _write_leases(path, [x for x in _read_leases(path) if x.get("vm") != vm])
 
 
 # ---------------------------------------------------------------- 驱动层
@@ -319,10 +377,12 @@ def vm_start(vm: str, headless: bool = True) -> str:
     with _vm_lock(ident):
         state = _parse_machinereadable(_vbox("showvminfo", ident, "--machinereadable")).get("VMState", "")
         if state == "running":
-            return f"{vm} 已在运行，无需启动。"
+            return f"{vm} 已在运行，无需启动（未接管，不会被 Pyke 自动关闭）。"
         mode = "headless" if headless else "gui"
         _vbox("startvm", ident, "--type", mode, timeout=60)
-        return f"{vm} 已以 {mode} 模式启动。等几秒让网络起来，可用 vm_list 确认状态。"
+        _add_lease(ident)
+        managed = "已登记为当前 Pyke 任务的托管 VM；停止会话/暂停/删除任务时会自动回收。" if _lease_path() else ""
+        return f"{vm} 已以 {mode} 模式启动。等几秒让网络起来，可用 vm_list 确认状态。{managed}"
 
 
 @mcp.tool()
@@ -346,8 +406,10 @@ def vm_stop(vm: str, mode: str = "acpi", confirm: bool = False) -> str:
             return f"{vm} 已发送 ACPI 关机事件，guest 正在自行关机，稍后 vm_list 确认。"
         if mode == "poweroff":
             _vbox("controlvm", ident, "poweroff")
+            _remove_lease(ident)
             return f"{vm} 已强制断电。"
         _vbox("controlvm", ident, "savestate")
+        _remove_lease(ident)
         return f"{vm} 已保存状态并停止（saved），可再启动。"
 
 
@@ -608,7 +670,55 @@ def vm_copyfrom(vm: str, guest_path: str, host_path: str) -> str:
     return f"已回收 {vm}:{guest_path} → {host_path}"
 
 
+def _cleanup_leases(path: Path, grace_seconds: int) -> int:
+    """Stop only VMs explicitly recorded by Pyke, then retain failed leases.
+
+    This is an internal lifecycle entrypoint, not an MCP tool.  It is called by
+    the Go server on stop/pause/delete/shutdown with the same MCP configuration
+    used for the original start.  ACPI is attempted first; force-off is limited
+    to a recorded lease after the bounded grace period, so cleanup cannot hang
+    forever and leave a CPU-consuming VM behind.
+    """
+    leases = _read_leases(path)
+    if not leases:
+        return 0
+    remaining: list[dict[str, Any]] = []
+    messages: list[str] = []
+    for lease in leases:
+        vm = lease["vm"]
+        try:
+            with _vm_lock(vm):
+                state = _parse_machinereadable(_vbox("showvminfo", vm, "--machinereadable")).get("VMState", "")
+                if state == "running":
+                    _vbox("controlvm", vm, "acpipowerbutton")
+                    deadline = time.monotonic() + max(0, grace_seconds)
+                    while time.monotonic() < deadline:
+                        time.sleep(1)
+                        state = _parse_machinereadable(_vbox("showvminfo", vm, "--machinereadable")).get("VMState", "")
+                        if state != "running":
+                            break
+                    if state == "running":
+                        _vbox("controlvm", vm, "poweroff")
+                        messages.append(f"{vm}: ACPI 超时，已对 Pyke 托管 VM 强制断电")
+                    else:
+                        messages.append(f"{vm}: 已通过 ACPI 关闭")
+                else:
+                    messages.append(f"{vm}: 已是 {state or 'stopped'}")
+        except VMError as exc:
+            remaining.append(lease)
+            messages.append(f"{vm}: 回收失败：{exc}")
+    _write_leases(path, remaining)
+    print("\n".join(messages))
+    return 1 if remaining else 0
+
+
 def main() -> None:
+    if len(sys.argv) >= 3 and sys.argv[1] == "--pyke-cleanup-leases":
+        try:
+            grace = int(sys.argv[4]) if len(sys.argv) >= 5 and sys.argv[3] == "--grace-seconds" else 30
+        except ValueError:
+            raise SystemExit("--grace-seconds 必须是整数")
+        raise SystemExit(_cleanup_leases(Path(sys.argv[2]), grace))
     mcp.run()
 
 

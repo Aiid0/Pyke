@@ -63,3 +63,11 @@ Windows headless 的 WDDM 驱动接管桌面后，VirtualBox 主机侧 `screensh
 - VM 名/快照名走正则校验 + 存在性校验，防参数注入；
 - 平台内所有调用经 guard 解包后进入三层拦截（deny/judge/ask）——`vm_snapshot_restore`、`vm_stop(poweroff)` 这类操作建议在系统里配 ask 规则转人工审批；
 - per-VM 串行锁，避免并发操作撞 VBox 机锁。
+
+## Pyke 任务托管
+
+当本 MCP 由 Pyke 的任务 Agent 调用时，`vm_start` 只会为**本次实际从关机状态启动**的
+VM 建立任务租约。已运行的 VM 不会被接管，因此不会因停止 Pyke 会话而误关。
+任务停止、暂停、删除或 Pyke 服务退出时，平台对租约 VM 先发 ACPI 关机，30 秒内未退出
+才强制断电；不会自动还原快照。该回收入口是平台内部使用的
+`--pyke-cleanup-leases`，不是供 Agent 调用的 MCP 工具。
